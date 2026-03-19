@@ -1,0 +1,30 @@
+// hello.uniL — UniLang Hello World
+// Demonstrates mixing Python and Java syntax in one file
+
+// Python-style print
+print("Hello from UniLang! (Python-style)")
+
+// Java-style print
+System.out.println("Hello from UniLang! (Java-style)")
+
+// Variable declarations — both styles
+name = "World"                    // Python-style (inferred)
+String greeting = "Hello"         // Java-style (explicit)
+
+// String formatting — both styles
+print(f"{greeting}, {name}!")     // Python f-string
+System.out.println(greeting + ", " + name + "!")  // Java concatenation
+
+// Function — Python-style
+def add(a: int, b: int) -> int:
+    return a + b
+
+// Function — Java-style
+public static int multiply(int a, int b) {
+    return a * b;
+}
+
+// Using both
+result1 = add(3, 4)
+int result2 = multiply(3, 4)
+print(f"3 + 4 = {result1}, 3 * 4 = {result2}")

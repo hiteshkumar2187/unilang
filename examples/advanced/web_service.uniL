@@ -1,0 +1,68 @@
+// web_service.uniL — Web Service with ML Integration
+// Demonstrates Spring Boot annotations with Python ML code
+
+import org.springframework.boot.SpringApplication
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.web.bind.annotation.*
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+import json
+
+// Java annotation on Python-style class
+@SpringBootApplication
+@RestController
+class PredictionService:
+    def __init__(self):
+        self.model = None
+        self.trained = false
+
+    @PostMapping("/train")
+    def train(self, @RequestBody data: dict) -> dict:
+        """Train a model from JSON data."""
+        X = np.array(data["features"])
+        y = np.array(data["labels"])
+
+        self.model = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            random_state=42
+        )
+        self.model.fit(X, y)
+        self.trained = true
+
+        return {
+            "status": "trained",
+            "n_samples": len(y),
+            "n_features": X.shape[1],
+            "feature_importances": self.model.feature_importances_.tolist()
+        }
+
+    @PostMapping("/predict")
+    def predict(self, @RequestBody data: dict) -> dict:
+        if not self.trained:
+            return {"error": "Model not trained. POST to /train first."}
+
+        X = np.array(data["features"])
+        predictions = self.model.predict(X)
+        probabilities = self.model.predict_proba(X)
+
+        return {
+            "predictions": predictions.tolist(),
+            "probabilities": probabilities.tolist()
+        }
+
+    @GetMapping("/health")
+    public Map<String, Object> health() {
+        Map<String, Object> status = new HashMap<>();
+        status.put("status", "healthy");
+        status.put("model_trained", self.trained);
+        return status;
+    }
+
+// Java-style main entry point
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(PredictionService.class, args);
+        System.out.println("UniLang ML Service started on port 8080");
+    }
+}

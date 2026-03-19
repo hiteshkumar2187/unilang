@@ -1,0 +1,24 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/unilang-common",
+    "crates/unilang-lexer",
+    "crates/unilang-parser",
+    "crates/unilang-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.75"
+repository = "https://github.com/apache/unilang"
+
+[workspace.dependencies]
+thiserror = "1"
+clap = { version = "=4.5.23", features = ["derive"] }

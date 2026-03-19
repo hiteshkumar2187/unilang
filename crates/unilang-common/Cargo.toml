@@ -1,0 +1,10 @@
+[package]
+name = "unilang-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Shared types for the UniLang compiler"
+
+[dependencies]
+thiserror.workspace = true

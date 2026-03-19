@@ -1,0 +1,45 @@
+# UniLang Project Configuration
+# This is the root configuration for the UniLang compiler project itself.
+
+[project]
+name = "unilang"
+version = "0.1.0-dev"
+description = "A unified programming language bridging Python and Java"
+license = "Apache-2.0"
+homepage = "https://unilang.apache.org"
+repository = "https://github.com/apache/unilang"
+authors = ["UniLang Contributors"]
+unilang-version = "1.0"
+
+[build]
+target = "jvm"
+optimization = "debug"
+threads = "auto"
+incremental = true
+
+[runtime]
+jvm-args = ["-Xmx2g", "-Xms512m"]
+python-version = ">=3.11"
+java-version = ">=21"
+
+[toolchain]
+compiler = "rustc"
+minimum-rust-version = "1.75"
+
+[testing]
+framework = "both"          # "pytest", "junit", or "both"
+parallel = true
+coverage-threshold = 90
+
+[formatting]
+indent-size = 4
+indent-style = "spaces"
+max-line-length = 120
+default-syntax-style = "auto"   # "python", "java", or "auto"
+trailing-newline = true
+
+[linting]
+enabled = true
+strict-mode = false
+warn-unused-imports = true
+warn-dynamic-types = false

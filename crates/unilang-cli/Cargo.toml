@@ -1,0 +1,17 @@
+[package]
+name = "unilang-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "CLI for the UniLang compiler"
+
+[[bin]]
+name = "unilang"
+path = "src/main.rs"
+
+[dependencies]
+unilang-common = { path = "../unilang-common" }
+unilang-lexer = { path = "../unilang-lexer" }
+unilang-parser = { path = "../unilang-parser" }
+clap.workspace = true

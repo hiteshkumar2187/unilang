@@ -1,0 +1,51 @@
+# UniLang build artifacts
+/target/
+/build/
+*.uniL.out
+*.class
+*.pyc
+__pycache__/
+
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Java
+*.jar
+*.war
+*.ear
+*.class
+.gradle/
+build/
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# UniLang local state
+.unilang/
+unilang.lock
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

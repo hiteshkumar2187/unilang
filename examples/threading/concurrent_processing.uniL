@@ -1,0 +1,65 @@
+// concurrent_processing.uniL — Multi-threading Example
+// Demonstrates Java threading with Python-style code
+
+import java.util.concurrent.*
+import java.util.concurrent.atomic.AtomicInteger
+
+// Shared state with Java's thread-safe collections
+ConcurrentHashMap<String, Integer> results = new ConcurrentHashMap<>()
+AtomicInteger taskCounter = new AtomicInteger(0)
+
+// Python-style worker function — runs on Java threads
+def process_chunk(chunk_id: int, data: list) -> dict:
+    """Process a data chunk. Runs in true parallel (no GIL)."""
+    total = sum(x * x for x in data)
+    count = taskCounter.incrementAndGet()
+    print(f"[Thread {Thread.currentThread().getName()}] Chunk {chunk_id}: sum={total}, task #{count}")
+    return {"chunk_id": chunk_id, "result": total}
+
+// Java-style orchestrator
+public class ParallelProcessor {
+    private final int threadCount
+
+    public ParallelProcessor(int threads) {
+        this.threadCount = threads
+    }
+
+    public void processAll(list data, int chunkSize) {
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        List<Future<Object>> futures = new ArrayList<>();
+
+        // Split data into chunks and submit
+        for i in range(0, len(data), chunkSize):
+            chunk = data[i:i + chunkSize]
+            chunk_id = i // chunkSize
+            future = executor.submit(lambda: process_chunk(chunk_id, chunk))
+            futures.add(future)
+
+        // Collect results
+        for future in futures:
+            result = future.get()
+            results.put(f"chunk_{result['chunk_id']}", result['result'])
+
+        executor.shutdown()
+        executor.awaitTermination(60, TimeUnit.SECONDS)
+    }
+}
+
+// Synchronized access example
+lock = ReentrantLock()
+
+def safe_update(shared_list, value):
+    lock.lock()
+    try:
+        shared_list.append(value)
+        print(f"Added {value}, list size: {len(shared_list)}")
+    finally:
+        lock.unlock()
+
+// Main execution
+data = list(range(10000))
+processor = ParallelProcessor(8)
+processor.processAll(data, 1000)
+
+print(f"\nAll chunks processed. Results: {dict(results)}")
+print(f"Total tasks completed: {taskCounter.get()}")
