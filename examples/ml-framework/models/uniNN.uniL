@@ -1,0 +1,344 @@
+// uniNN.uniL — UniLang Neural Network Model
+// A complete, original neural network architecture built from scratch
+// Designed as UniLang's flagship publishable model
+//
+// Model: UniNN (UniLang Neural Network)
+// Architecture: Multi-head feed-forward with gated residual connections
+//
+// Licensed under Apache License 2.0
+
+from core.tensor import Tensor
+from core.layers import Linear, ReLU, LeakyReLU, Sigmoid, Dropout, BatchNorm, Layer
+from core.network import Sequential
+import math
+import random
+
+// ═══════════════════════════════════════════════════════════════════
+// UniNN Architecture
+//
+// Key innovations over standard MLP:
+// 1. Gated Residual Units (GRU-style gating for feed-forward networks)
+// 2. Multi-Scale Feature Mixing (process features at different widths)
+// 3. Learnable skip connections (not hardcoded identity)
+//
+// Structure:
+//   Input → Projection → [GatedResidualBlock × N] → Head → Output
+//
+// Each GatedResidualBlock:
+//   x → Linear → BatchNorm → LeakyReLU → Linear → gate × transform + (1-gate) × skip
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Gated Residual Block ─────────────────────────────────────
+
+public class GatedResidualBlock implements Layer {
+    private Linear fc1
+    private Linear fc2
+    private Linear gate
+    private Linear skipProj     // Project skip connection if dimensions differ
+    private BatchNorm norm
+    private Dropout dropout
+    private int inDim
+    private int hiddenDim
+    private int outDim
+
+    public GatedResidualBlock(int inDim, int hiddenDim, int outDim,
+                               double dropoutRate = 0.1) {
+        this.inDim = inDim
+        this.hiddenDim = hiddenDim
+        this.outDim = outDim
+
+        // Transform path
+        this.fc1 = Linear(inDim, hiddenDim, name="grb.fc1")
+        this.fc2 = Linear(hiddenDim, outDim, name="grb.fc2")
+
+        // Gate: sigmoid output controls how much of the transform to use
+        // gate ≈ 1 → use transformed output
+        // gate ≈ 0 → use skip connection (pass input through)
+        this.gate = Linear(inDim, outDim, name="grb.gate")
+
+        // Skip projection (if input/output dims differ)
+        if inDim != outDim:
+            this.skipProj = Linear(inDim, outDim, name="grb.skip")
+        else:
+            this.skipProj = None
+
+        this.norm = BatchNorm(hiddenDim)
+        this.dropout = Dropout(dropoutRate)
+    }
+
+    public Tensor forward(Tensor input) {
+        // Transform path: input → fc1 → norm → leaky_relu → dropout → fc2
+        h = self.fc1.forward(input)
+        h = self.norm.forward(h)
+        h = h.leaky_relu(0.01)
+        h = self.dropout.forward(h)
+        transform = self.fc2.forward(h)
+
+        // Gate: controls residual vs transform balance
+        g = self.gate.forward(input).sigmoid()
+
+        // Skip connection
+        if self.skipProj is not None:
+            skip = self.skipProj.forward(input)
+        else:
+            skip = input
+
+        // Gated output: gate * transform + (1 - gate) * skip
+        gated_transform = transform.mul(g)
+        gate_complement = Tensor.ones(g.shape[:]).sub(g)
+        gated_skip = skip.mul(gate_complement)
+        output = gated_transform.add(gated_skip)
+
+        return output
+    }
+
+    public list parameters():
+        params = []
+        params.extend(self.fc1.parameters())
+        params.extend(self.fc2.parameters())
+        params.extend(self.gate.parameters())
+        params.extend(self.norm.parameters())
+        if self.skipProj is not None:
+            params.extend(self.skipProj.parameters())
+        return params
+
+    public String name():
+        return f"GatedResidual({self.inDim}→{self.hiddenDim}→{self.outDim})"
+}
+
+// ── Multi-Scale Feature Mixer ────────────────────────────────
+// Processes input through multiple parallel paths at different widths
+// then concatenates: captures both fine-grained and coarse features
+
+public class MultiScaleMixer implements Layer {
+    private Linear narrow    // Small hidden — captures fine patterns
+    private Linear medium    // Medium hidden — balanced
+    private Linear wide      // Large hidden — captures broad patterns
+    private Linear combine   // Combine all scales
+    private int inDim
+    private int outDim
+
+    public MultiScaleMixer(int inDim, int outDim) {
+        this.inDim = inDim
+        this.outDim = outDim
+
+        int narrowDim = outDim // 4
+        int mediumDim = outDim // 2
+        int wideDim = outDim - narrowDim - mediumDim
+
+        this.narrow = Linear(inDim, narrowDim, name="mixer.narrow")
+        this.medium = Linear(inDim, mediumDim, name="mixer.medium")
+        this.wide = Linear(inDim, wideDim, name="mixer.wide")
+        this.combine = Linear(outDim, outDim, name="mixer.combine")
+    }
+
+    public Tensor forward(Tensor input) {
+        // Process at three scales
+        n = self.narrow.forward(input).relu()
+        m = self.medium.forward(input).leaky_relu(0.01)
+        w = self.wide.forward(input).tanh()
+
+        // Concatenate: combine features from all scales
+        int batchSize = input.shape[0]
+        int nDim = n.shape[1]
+        int mDim = m.shape[1]
+        int wDim = w.shape[1]
+        int totalDim = nDim + mDim + wDim
+
+        concat = Tensor([batchSize, totalDim], requiresGrad=true)
+        for b in range(batchSize):
+            for j in range(nDim):
+                concat.data[b * totalDim + j] = n.data[b * nDim + j]
+            for j in range(mDim):
+                concat.data[b * totalDim + nDim + j] = m.data[b * mDim + j]
+            for j in range(wDim):
+                concat.data[b * totalDim + nDim + mDim + j] = w.data[b * wDim + j]
+
+        // Final projection
+        return self.combine.forward(concat)
+    }
+
+    public list parameters():
+        params = []
+        params.extend(self.narrow.parameters())
+        params.extend(self.medium.parameters())
+        params.extend(self.wide.parameters())
+        params.extend(self.combine.parameters())
+        return params
+
+    public String name():
+        return f"MultiScaleMixer({self.inDim}→{self.outDim})"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UniNN — The Complete Model
+// ═══════════════════════════════════════════════════════════════════
+
+public class UniNN {
+    private MultiScaleMixer inputMixer
+    private list residualBlocks
+    private Linear outputHead
+    private String task          // "classification" or "regression"
+    private int numClasses
+    private int inputDim
+    private int hiddenDim
+    private int numBlocks
+    private double dropoutRate
+    private String modelVersion = "1.0.0"
+
+    public UniNN(int inputDim, int hiddenDim, int outputDim,
+                 int numBlocks = 3, double dropoutRate = 0.1,
+                 String task = "classification") {
+        this.inputDim = inputDim
+        this.hiddenDim = hiddenDim
+        this.numClasses = outputDim
+        this.numBlocks = numBlocks
+        this.dropoutRate = dropoutRate
+        this.task = task
+
+        // Stage 1: Multi-scale input projection
+        this.inputMixer = MultiScaleMixer(inputDim, hiddenDim)
+
+        // Stage 2: Stacked gated residual blocks
+        this.residualBlocks = []
+        for i in range(numBlocks):
+            block = GatedResidualBlock(
+                hiddenDim, hiddenDim * 2, hiddenDim,
+                dropoutRate=dropoutRate
+            )
+            self.residualBlocks.append(block)
+
+        // Stage 3: Output head
+        this.outputHead = Linear(hiddenDim, outputDim, name="output")
+    }
+
+    def forward(self, Tensor input) -> Tensor:
+        // Input projection through multi-scale mixer
+        x = self.inputMixer.forward(input)
+
+        // Process through gated residual blocks
+        for block in self.residualBlocks:
+            x = block.forward(x)
+
+        // Output head
+        logits = self.outputHead.forward(x)
+
+        // Apply output activation based on task
+        if self.task == "classification" and self.numClasses > 2:
+            return logits.softmax()
+        elif self.task == "classification" and self.numClasses == 2:
+            return logits.sigmoid()
+        else:
+            return logits  // Raw output for regression
+
+    def parameters(self) -> list:
+        params = []
+        params.extend(self.inputMixer.parameters())
+        for block in self.residualBlocks:
+            params.extend(block.parameters())
+        params.extend(self.outputHead.parameters())
+        return params
+
+    def num_parameters(self) -> int:
+        return sum(p.size for p in self.parameters())
+
+    def zero_grad(self):
+        for p in self.parameters():
+            p.zero_grad()
+
+    def train_mode(self):
+        for block in self.residualBlocks:
+            if hasattr(block, 'dropout'):
+                block.dropout.set_training(true)
+            if hasattr(block, 'norm'):
+                block.norm.set_training(true)
+
+    def eval_mode(self):
+        for block in self.residualBlocks:
+            if hasattr(block, 'dropout'):
+                block.dropout.set_training(false)
+            if hasattr(block, 'norm'):
+                block.norm.set_training(false)
+
+    def summary(self):
+        print(f"\n{'='*60}")
+        print(f"  UniNN v{self.modelVersion}")
+        print(f"  UniLang Neural Network — From Scratch")
+        print(f"{'='*60}")
+        print(f"  Task:          {self.task}")
+        print(f"  Input dim:     {self.inputDim}")
+        print(f"  Hidden dim:    {self.hiddenDim}")
+        print(f"  Output dim:    {self.numClasses}")
+        print(f"  Blocks:        {self.numBlocks}")
+        print(f"  Dropout:       {self.dropoutRate}")
+        print(f"{'─'*60}")
+        print(f"  Architecture:")
+        print(f"    {self.inputMixer.name()}")
+        for i, block in enumerate(self.residualBlocks):
+            print(f"    {block.name()}")
+        print(f"    Linear({self.hiddenDim} → {self.numClasses})")
+        print(f"{'─'*60}")
+        print(f"  Total parameters: {self.num_parameters():,}")
+        print(f"{'='*60}\n")
+
+    // ── Serialization ────────────────────────────────────────
+
+    def save(self, String path):
+        """Save model weights and config."""
+        import json, os
+        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=true)
+
+        model_data = {
+            "model": "UniNN",
+            "version": self.modelVersion,
+            "config": {
+                "inputDim": self.inputDim,
+                "hiddenDim": self.hiddenDim,
+                "outputDim": self.numClasses,
+                "numBlocks": self.numBlocks,
+                "dropoutRate": self.dropoutRate,
+                "task": self.task
+            },
+            "parameters": []
+        }
+
+        for param in self.parameters():
+            model_data["parameters"].append({
+                "name": param.name,
+                "shape": list(param.shape),
+                "data": [round(float(x), 8) for x in param.data]
+            })
+
+        with open(path, "w") as f:
+            json.dump(model_data, f)
+
+        size_mb = os.path.getsize(path) / (1024 * 1024)
+        print(f"Model saved: {path} ({size_mb:.2f} MB, {self.num_parameters():,} params)")
+
+    @staticmethod
+    def load(String path) -> UniNN:
+        """Load model from file."""
+        import json
+        with open(path, "r") as f:
+            model_data = json.load(f)
+
+        config = model_data["config"]
+        model = UniNN(
+            inputDim=config["inputDim"],
+            hiddenDim=config["hiddenDim"],
+            outputDim=config["outputDim"],
+            numBlocks=config["numBlocks"],
+            dropoutRate=config["dropoutRate"],
+            task=config["task"]
+        )
+
+        params = model.parameters()
+        saved_params = model_data["parameters"]
+
+        for i in range(len(params)):
+            for j in range(params[i].size):
+                params[i].data[j] = saved_params[i]["data"][j]
+
+        print(f"Loaded UniNN v{model_data['version']} ({model.num_parameters():,} params)")
+        return model
+}

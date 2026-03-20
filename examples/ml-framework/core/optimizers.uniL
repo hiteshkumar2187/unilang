@@ -1,0 +1,247 @@
+// optimizers.uniL — Training Optimizers
+// Custom gradient descent algorithms — built from scratch
+//
+// Licensed under Apache License 2.0
+
+from core.tensor import Tensor
+import math
+import java.util.Arrays
+
+// ═══════════════════════════════════════════════════════════════════
+// Optimizer Interface
+// ═══════════════════════════════════════════════════════════════════
+
+public interface Optimizer {
+    void step();
+    void zero_grad();
+    String name();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SGD — Stochastic Gradient Descent
+// ═══════════════════════════════════════════════════════════════════
+// θ(t+1) = θ(t) - lr × ∇L(θ)
+// With momentum: v(t) = μ × v(t-1) + ∇L(θ)
+//                θ(t+1) = θ(t) - lr × v(t)
+
+public class SGD implements Optimizer {
+    private list params
+    private double learningRate
+    private double momentum
+    private double weightDecay
+    private list velocities    // Momentum buffers
+
+    public SGD(list params, double lr = 0.01, double momentum = 0.0, double weightDecay = 0.0) {
+        this.params = params
+        this.learningRate = lr
+        this.momentum = momentum
+        this.weightDecay = weightDecay
+
+        // Initialize velocity buffers
+        this.velocities = []
+        for p in params:
+            this.velocities.append(new double[p.size])
+    }
+
+    public void step() {
+        for i in range(len(self.params)):
+            param = self.params[i]
+            velocity = self.velocities[i]
+
+            for j in range(param.size) {
+                double grad = param.grad[j];
+
+                // L2 regularization (weight decay)
+                if (this.weightDecay > 0) {
+                    grad += this.weightDecay * param.data[j];
+                }
+
+                // Momentum
+                if (this.momentum > 0) {
+                    velocity[j] = this.momentum * velocity[j] + grad;
+                    param.data[j] -= this.learningRate * velocity[j];
+                } else {
+                    param.data[j] -= this.learningRate * grad;
+                }
+            }
+    }
+
+    public void zero_grad():
+        for param in self.params:
+            param.zero_grad()
+
+    public String name():
+        return f"SGD(lr={self.learningRate}, momentum={self.momentum})"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Adam — Adaptive Moment Estimation
+// ═══════════════════════════════════════════════════════════════════
+// m(t) = β1 × m(t-1) + (1 - β1) × g(t)           (first moment)
+// v(t) = β2 × v(t-1) + (1 - β2) × g(t)²          (second moment)
+// m̂(t) = m(t) / (1 - β1^t)                        (bias corrected)
+// v̂(t) = v(t) / (1 - β2^t)                        (bias corrected)
+// θ(t+1) = θ(t) - lr × m̂(t) / (√v̂(t) + ε)
+
+public class Adam implements Optimizer {
+    private list params
+    private double learningRate
+    private double beta1
+    private double beta2
+    private double epsilon
+    private double weightDecay
+    private list m            // First moment estimates
+    private list v            // Second moment estimates
+    private int t             // Time step
+
+    public Adam(list params, double lr = 0.001, double beta1 = 0.9,
+                double beta2 = 0.999, double epsilon = 1e-8, double weightDecay = 0.0) {
+        this.params = params
+        this.learningRate = lr
+        this.beta1 = beta1
+        this.beta2 = beta2
+        this.epsilon = epsilon
+        this.weightDecay = weightDecay
+        this.t = 0
+
+        this.m = []
+        this.v = []
+        for p in params:
+            this.m.append(new double[p.size])
+            this.v.append(new double[p.size])
+    }
+
+    public void step() {
+        this.t += 1
+
+        // Bias correction factors
+        double bc1 = 1.0 - Math.pow(this.beta1, this.t)
+        double bc2 = 1.0 - Math.pow(this.beta2, this.t)
+
+        for i in range(len(self.params)) {
+            param = self.params[i]
+            double[] mi = self.m[i]
+            double[] vi = self.v[i]
+
+            for (int j = 0; j < param.size; j++) {
+                double grad = param.grad[j];
+
+                // Weight decay (AdamW style — decouple from gradient)
+                if (this.weightDecay > 0) {
+                    param.data[j] -= this.learningRate * this.weightDecay * param.data[j];
+                }
+
+                // Update biased first moment estimate
+                mi[j] = this.beta1 * mi[j] + (1.0 - this.beta1) * grad;
+
+                // Update biased second moment estimate
+                vi[j] = this.beta2 * vi[j] + (1.0 - this.beta2) * grad * grad;
+
+                // Bias-corrected estimates
+                double mHat = mi[j] / bc1;
+                double vHat = vi[j] / bc2;
+
+                // Update parameters
+                param.data[j] -= this.learningRate * mHat / (Math.sqrt(vHat) + this.epsilon);
+            }
+        }
+    }
+
+    public void zero_grad():
+        for param in self.params:
+            param.zero_grad()
+
+    public String name():
+        return f"Adam(lr={self.learningRate}, β1={self.beta1}, β2={self.beta2})"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RMSProp — Root Mean Square Propagation
+// ═══════════════════════════════════════════════════════════════════
+// v(t) = α × v(t-1) + (1 - α) × g(t)²
+// θ(t+1) = θ(t) - lr × g(t) / (√v(t) + ε)
+
+public class RMSProp implements Optimizer {
+    private list params
+    private double learningRate
+    private double alpha
+    private double epsilon
+    private list v
+
+    public RMSProp(list params, double lr = 0.01, double alpha = 0.99, double epsilon = 1e-8) {
+        this.params = params
+        this.learningRate = lr
+        this.alpha = alpha
+        this.epsilon = epsilon
+
+        this.v = []
+        for p in params:
+            this.v.append(new double[p.size])
+    }
+
+    public void step() {
+        for i in range(len(self.params)) {
+            param = self.params[i]
+            double[] vi = self.v[i]
+
+            for (int j = 0; j < param.size; j++) {
+                double grad = param.grad[j];
+                vi[j] = this.alpha * vi[j] + (1.0 - this.alpha) * grad * grad;
+                param.data[j] -= this.learningRate * grad / (Math.sqrt(vi[j]) + this.epsilon);
+            }
+        }
+    }
+
+    public void zero_grad():
+        for param in self.params:
+            param.zero_grad()
+
+    public String name():
+        return f"RMSProp(lr={self.learningRate}, α={self.alpha})"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Learning Rate Schedulers
+// ═══════════════════════════════════════════════════════════════════
+
+public class StepLRScheduler {
+    private Optimizer optimizer
+    private int stepSize
+    private double gamma
+    private int currentStep
+
+    public StepLRScheduler(Optimizer optimizer, int stepSize = 10, double gamma = 0.1) {
+        this.optimizer = optimizer
+        this.stepSize = stepSize
+        this.gamma = gamma
+        this.currentStep = 0
+    }
+
+    def step(self):
+        self.currentStep += 1
+        if self.currentStep % self.stepSize == 0:
+            self.optimizer.learningRate *= self.gamma
+            print(f"  LR reduced to {self.optimizer.learningRate:.6f}")
+}
+
+public class CosineAnnealingScheduler {
+    private Optimizer optimizer
+    private double baseLR
+    private double minLR
+    private int totalSteps
+    private int currentStep
+
+    public CosineAnnealingScheduler(Optimizer optimizer, int totalSteps, double minLR = 1e-6) {
+        this.optimizer = optimizer
+        this.baseLR = optimizer.learningRate
+        this.minLR = minLR
+        this.totalSteps = totalSteps
+        this.currentStep = 0
+    }
+
+    def step(self):
+        self.currentStep += 1
+        // Cosine annealing: lr = min_lr + 0.5 * (base_lr - min_lr) * (1 + cos(π * t / T))
+        cosine = math.cos(math.pi * self.currentStep / self.totalSteps)
+        self.optimizer.learningRate = self.minLR + 0.5 * (self.baseLR - self.minLR) * (1 + cosine)
+}

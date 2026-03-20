@@ -1,0 +1,195 @@
+// loss.uniL — Loss Functions
+// Custom loss functions with automatic differentiation
+//
+// Licensed under Apache License 2.0
+
+from core.tensor import Tensor
+import math
+
+// ═══════════════════════════════════════════════════════════════════
+// Loss Function Interface
+// ═══════════════════════════════════════════════════════════════════
+
+public interface LossFunction {
+    Tensor compute(Tensor predictions, Tensor targets);
+    String name();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Mean Squared Error (MSE) — For regression
+// ═══════════════════════════════════════════════════════════════════
+// L = (1/N) × Σ(predicted - target)²
+
+public class MSELoss implements LossFunction {
+
+    public Tensor compute(Tensor predictions, Tensor targets) {
+        // diff = predictions - targets
+        Tensor diff = predictions.sub(targets)
+        // squared = diff²
+        Tensor squared = diff.pow(2.0)
+        // mean
+        return squared.mean()
+    }
+
+    public String name():
+        return "MSELoss"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Cross-Entropy Loss — For classification
+// ═══════════════════════════════════════════════════════════════════
+// L = -(1/N) × Σ target × log(predicted)
+// Expects predictions to be log-probabilities or raw logits
+
+public class CrossEntropyLoss implements LossFunction {
+
+    public Tensor compute(Tensor logits, Tensor targets) {
+        """
+        logits:  (batch_size, num_classes) — raw scores
+        targets: (batch_size, num_classes) — one-hot encoded
+        """
+        int batchSize = logits.shape[0]
+        int numClasses = logits.shape[1]
+
+        // Softmax + log for numerical stability (log-sum-exp trick)
+        Tensor loss = Tensor([1], requiresGrad=logits.requiresGrad)
+        double totalLoss = 0.0
+
+        for (int b = 0; b < batchSize; b++) {
+            // Find max for numerical stability
+            double maxLogit = -1e30;
+            for (int c = 0; c < numClasses; c++) {
+                double val = logits.data[b * numClasses + c];
+                if (val > maxLogit) maxLogit = val;
+            }
+
+            // Compute log(softmax)
+            double logSumExp = 0.0;
+            for (int c = 0; c < numClasses; c++) {
+                logSumExp += Math.exp(logits.data[b * numClasses + c] - maxLogit);
+            }
+            logSumExp = Math.log(logSumExp) + maxLogit;
+
+            // Cross-entropy: -Σ target * log_softmax
+            for (int c = 0; c < numClasses; c++) {
+                double logProb = logits.data[b * numClasses + c] - logSumExp;
+                totalLoss -= targets.data[b * numClasses + c] * logProb;
+            }
+        }
+
+        loss.data[0] = totalLoss / batchSize
+
+        // Manual backward for cross-entropy + softmax (combined for stability)
+        if logits.requiresGrad:
+            def _backward():
+                for b in range(batchSize):
+                    // Compute softmax
+                    max_val = -1e30
+                    for c in range(numClasses):
+                        val = logits.data[b * numClasses + c]
+                        if val > max_val:
+                            max_val = val
+
+                    exp_sum = 0.0
+                    softmax_vals = [0.0] * numClasses
+                    for c in range(numClasses):
+                        softmax_vals[c] = math.exp(logits.data[b * numClasses + c] - max_val)
+                        exp_sum += softmax_vals[c]
+                    for c in range(numClasses):
+                        softmax_vals[c] /= exp_sum
+
+                    // Gradient: softmax - target (elegant combined gradient)
+                    for c in range(numClasses):
+                        logits.grad[b * numClasses + c] += \
+                            loss.grad[0] * (softmax_vals[c] - targets.data[b * numClasses + c]) / batchSize
+
+            loss._backward_ops.append(_backward)
+            loss._backward_ops.extend(logits._backward_ops)
+
+        return loss
+    }
+
+    public String name():
+        return "CrossEntropyLoss"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Binary Cross-Entropy Loss — For binary classification
+// ═══════════════════════════════════════════════════════════════════
+// L = -(1/N) × Σ [target × log(p) + (1 - target) × log(1 - p)]
+
+public class BCELoss implements LossFunction {
+
+    public Tensor compute(Tensor predictions, Tensor targets) {
+        """predictions should be sigmoid outputs in [0, 1]."""
+        double eps = 1e-7
+        Tensor loss = Tensor([1], requiresGrad=predictions.requiresGrad)
+        double totalLoss = 0.0
+
+        for i in range(predictions.size):
+            p = max(min(predictions.data[i], 1.0 - eps), eps)  // Clamp for stability
+            t = targets.data[i]
+            totalLoss -= (t * math.log(p) + (1 - t) * math.log(1 - p))
+
+        loss.data[0] = totalLoss / predictions.size
+
+        if predictions.requiresGrad:
+            def _backward():
+                for i in range(predictions.size):
+                    p = max(min(predictions.data[i], 1.0 - eps), eps)
+                    t = targets.data[i]
+                    predictions.grad[i] += loss.grad[0] * (-t / p + (1 - t) / (1 - p)) / predictions.size
+            loss._backward_ops.append(_backward)
+            loss._backward_ops.extend(predictions._backward_ops)
+
+        return loss
+    }
+
+    public String name():
+        return "BCELoss"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Huber Loss — Robust regression (less sensitive to outliers)
+// ═══════════════════════════════════════════════════════════════════
+// L = (1/N) × Σ { 0.5 × (y - ŷ)²           if |y - ŷ| ≤ δ
+//                { δ × |y - ŷ| - 0.5 × δ²   otherwise
+
+public class HuberLoss implements LossFunction {
+    private double delta
+
+    public HuberLoss(double delta = 1.0) {
+        this.delta = delta
+    }
+
+    public Tensor compute(Tensor predictions, Tensor targets) {
+        Tensor loss = Tensor([1], requiresGrad=predictions.requiresGrad)
+        double totalLoss = 0.0
+
+        for i in range(predictions.size):
+            diff = predictions.data[i] - targets.data[i]
+            abs_diff = abs(diff)
+            if abs_diff <= self.delta:
+                totalLoss += 0.5 * diff * diff
+            else:
+                totalLoss += self.delta * abs_diff - 0.5 * self.delta * self.delta
+
+        loss.data[0] = totalLoss / predictions.size
+
+        if predictions.requiresGrad:
+            def _backward():
+                for i in range(predictions.size):
+                    diff = predictions.data[i] - targets.data[i]
+                    if abs(diff) <= self.delta:
+                        predictions.grad[i] += loss.grad[0] * diff / predictions.size
+                    else:
+                        predictions.grad[i] += loss.grad[0] * self.delta * (1.0 if diff > 0 else -1.0) / predictions.size
+            loss._backward_ops.append(_backward)
+            loss._backward_ops.extend(predictions._backward_ops)
+
+        return loss
+    }
+
+    public String name():
+        return f"HuberLoss(δ={self.delta})"
+}

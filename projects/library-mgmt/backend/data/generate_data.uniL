@@ -1,0 +1,314 @@
+// generate_data.uniL — Generates 10K books and 2K reviews
+// Demonstrates heavy Python usage for data generation with Java collections
+
+import numpy as np
+import pandas as pd
+from faker import Faker
+import json
+import random
+import java.util.concurrent.ConcurrentHashMap
+
+fake = Faker()
+Faker.seed(42)
+random.seed(42)
+np.random.seed(42)
+
+// ─── Configuration ─────────────────────────────────────────
+
+TOTAL_BOOKS = 10000
+TOTAL_REVIEWS = 2000
+TOTAL_USERS = 500
+
+CATEGORIES = [
+    "Fiction", "Non-Fiction", "Science", "Technology", "History",
+    "Biography", "Self-Help", "Children", "Mystery", "Romance",
+    "Fantasy", "Philosophy", "Arts", "Cooking", "Travel"
+]
+
+CATEGORY_WEIGHTS = [
+    0.15, 0.12, 0.08, 0.10, 0.07,
+    0.05, 0.08, 0.06, 0.09, 0.06,
+    0.05, 0.03, 0.02, 0.02, 0.02
+]
+
+PUBLISHERS = [
+    "Penguin Random House", "HarperCollins", "Simon & Schuster",
+    "Hachette Book Group", "Macmillan Publishers", "Scholastic",
+    "Wiley", "O'Reilly Media", "Springer", "Oxford University Press",
+    "Cambridge University Press", "MIT Press", "Academic Press",
+    "McGraw-Hill", "Pearson Education"
+]
+
+LANGUAGES = ["English", "Spanish", "French", "German", "Chinese", "Japanese", "Hindi"]
+LANGUAGE_WEIGHTS = [0.60, 0.10, 0.08, 0.07, 0.06, 0.05, 0.04]
+
+// ─── Generate Users ────────────────────────────────────────
+
+def generate_users(n: int) -> list:
+    users = []
+    for i in range(n):
+        users.append({
+            "id": f"USR-{i+1:05d}",
+            "name": fake.name(),
+            "email": fake.email(),
+            "memberSince": str(fake.date_between(start_date="-5y", end_date="today"))
+        })
+    return users
+
+// ─── Generate Books ────────────────────────────────────────
+
+def generate_books(n: int) -> list:
+    """Generate n books with realistic distributions."""
+    books = []
+
+    for i in range(n):
+        category = random.choices(CATEGORIES, weights=CATEGORY_WEIGHTS, k=1)[0]
+        publish_year = int(np.random.normal(2010, 10))
+        publish_year = max(1950, min(2026, publish_year))
+
+        total_copies = int(np.random.exponential(3)) + 1
+        total_copies = min(total_copies, 20)
+
+        // Simulate checkout history — popular books get more checkouts
+        popularity_factor = random.random()
+        if popularity_factor > 0.9:
+            total_checkouts = int(np.random.normal(80, 20))
+        elif popularity_factor > 0.6:
+            total_checkouts = int(np.random.normal(30, 15))
+        else:
+            total_checkouts = int(np.random.exponential(5))
+        total_checkouts = max(0, total_checkouts)
+
+        // Late return simulation — some books prone to late returns
+        late_factor = random.random()
+        if total_checkouts > 0:
+            if late_factor > 0.8:
+                late_rate = random.uniform(0.3, 0.7)  // High late return rate
+            elif late_factor > 0.4:
+                late_rate = random.uniform(0.05, 0.25) // Normal
+            else:
+                late_rate = random.uniform(0.0, 0.05)  // Very punctual
+            late_returns = int(total_checkouts * late_rate)
+            on_time_returns = total_checkouts - late_returns
+        else:
+            late_returns = 0
+            on_time_returns = 0
+
+        // Available copies
+        checked_out = min(int(np.random.exponential(1)), total_copies)
+        available_copies = total_copies - checked_out
+
+        status = "available"
+        if available_copies == 0:
+            status = random.choice(["checked_out", "reserved"])
+        elif random.random() < 0.01:
+            status = random.choice(["lost", "maintenance"])
+
+        page_count = int(np.random.normal(300, 100))
+        page_count = max(50, min(1200, page_count))
+
+        book = {
+            "id": f"BK-{i+1:06d}",
+            "title": generate_book_title(category),
+            "author": fake.name(),
+            "isbn": fake.isbn13(),
+            "publisher": random.choice(PUBLISHERS),
+            "publishYear": publish_year,
+            "category": category,
+            "totalCopies": total_copies,
+            "availableCopies": available_copies,
+            "status": status,
+            "averageRating": 0.0,    // Will be updated after reviews
+            "totalRatings": 0,
+            "totalCheckouts": total_checkouts,
+            "lateReturns": late_returns,
+            "onTimeReturns": on_time_returns,
+            "predictionTag": None,   // Will be set by ML model
+            "addedDate": str(fake.date_between(start_date="-3y", end_date="today")),
+            "description": fake.paragraph(nb_sentences=3),
+            "pageCount": page_count,
+            "language": random.choices(LANGUAGES, weights=LANGUAGE_WEIGHTS, k=1)[0],
+            "lateReturnRate": round(late_returns / max(1, late_returns + on_time_returns), 4)
+        }
+        books.append(book)
+
+    return books
+
+def generate_book_title(category: str) -> str:
+    """Generate realistic book titles based on category."""
+    templates = {
+        "Fiction": lambda: fake.sentence(nb_words=random.randint(2, 6))[:-1],
+        "Non-Fiction": lambda: f"The {fake.word().title()} of {fake.word().title()}",
+        "Science": lambda: f"{fake.word().title()} {random.choice(['Physics', 'Biology', 'Chemistry', 'Genetics', 'Quantum'])}",
+        "Technology": lambda: f"{random.choice(['Modern', 'Advanced', 'Practical', 'Essential'])} {random.choice(['Python', 'Java', 'Systems', 'Algorithms', 'Data', 'Cloud', 'AI'])}",
+        "History": lambda: f"The {fake.word().title()} {random.choice(['Empire', 'Revolution', 'Dynasty', 'War', 'Era'])}",
+        "Biography": lambda: f"{fake.name()}: {random.choice(['A Life', 'The Untold Story', 'Memoirs', 'A Biography'])}",
+        "Self-Help": lambda: f"{random.choice(['The Power of', 'How to', 'Mastering', 'The Art of'])} {fake.word().title()}",
+        "Children": lambda: f"The {random.choice(['Little', 'Magic', 'Amazing', 'Brave'])} {fake.word().title()}",
+        "Mystery": lambda: f"The {fake.word().title()} {random.choice(['Mystery', 'Case', 'Secret', 'Shadow', 'Cipher'])}",
+        "Romance": lambda: f"{random.choice(['Love in', 'Hearts of', 'A Season of', 'Forever'])} {fake.city()}",
+        "Fantasy": lambda: f"The {fake.word().title()} {random.choice(['Chronicles', 'Realm', 'Kingdom', 'Prophecy', 'Quest'])}",
+        "Philosophy": lambda: f"{random.choice(['Beyond', 'On', 'The Nature of'])} {fake.word().title()}",
+        "Arts": lambda: f"{random.choice(['The Art of', 'Understanding', 'Mastering'])} {fake.word().title()}",
+        "Cooking": lambda: f"The {fake.word().title()} {random.choice(['Kitchen', 'Cookbook', 'Table', 'Feast'])}",
+        "Travel": lambda: f"{random.choice(['Wandering', 'Lost in', 'Discovering'])} {fake.country()}"
+    }
+    gen = templates.get(category, lambda: fake.sentence(nb_words=4)[:-1])
+    return gen()
+
+// ─── Generate Reviews ──────────────────────────────────────
+
+def generate_reviews(books: list, users: list, n: int) -> list:
+    """Generate n reviews distributed across popular books."""
+    reviews = []
+
+    // Weight reviews toward popular books (higher checkout count)
+    checkout_counts = [b["totalCheckouts"] for b in books]
+    total_co = sum(checkout_counts) or 1
+    book_weights = [c / total_co + 0.0001 for c in checkout_counts]
+
+    reviewed_books = random.choices(books, weights=book_weights, k=n)
+
+    review_templates = [
+        "Great book! Really enjoyed reading it.",
+        "Not what I expected, but decent overall.",
+        "A masterpiece. Everyone should read this.",
+        "Average read. Nothing special.",
+        "Could not put it down! Highly recommend.",
+        "Boring and slow. Wouldn't recommend.",
+        "Interesting perspective. Worth a read.",
+        "The author's best work yet.",
+        "A bit too long, but the ending was worth it.",
+        "Changed my perspective on the subject.",
+        "Well-written but the plot was predictable.",
+        "An absolute page-turner!",
+        "Disappointing. Expected more from this author.",
+        "Perfect for a weekend read.",
+        "Technical and dense, but very informative."
+    ]
+
+    for i in range(n):
+        book = reviewed_books[i]
+        user = random.choice(users)
+
+        // Rating distribution — slightly skewed positive
+        rating = round(np.clip(np.random.normal(3.8, 1.0), 1.0, 5.0), 1)
+
+        review = {
+            "id": f"RV-{i+1:06d}",
+            "bookId": book["id"],
+            "userId": user["id"],
+            "userName": user["name"],
+            "rating": rating,
+            "comment": random.choice(review_templates) + " " + fake.sentence(),
+            "reviewDate": str(fake.date_between(start_date="-2y", end_date="today"))
+        }
+        reviews.append(review)
+
+    return reviews
+
+// ─── Apply Ratings to Books ────────────────────────────────
+
+def apply_ratings_to_books(books: list, reviews: list) -> list:
+    """Update book average ratings based on reviews."""
+    // Group reviews by book
+    book_ratings = {}
+    for review in reviews:
+        bid = review["bookId"]
+        if bid not in book_ratings:
+            book_ratings[bid] = []
+        book_ratings[bid].append(review["rating"])
+
+    // Update books
+    for book in books:
+        ratings = book_ratings.get(book["id"], [])
+        if ratings:
+            book["averageRating"] = round(sum(ratings) / len(ratings), 2)
+            book["totalRatings"] = len(ratings)
+
+    return books
+
+// ─── Main Generation Pipeline ──────────────────────────────
+
+def generate_all_data() -> dict:
+    """Generate complete dataset and return as dict."""
+    print("Generating library data...")
+    print(f"  Books: {TOTAL_BOOKS}")
+    print(f"  Users: {TOTAL_USERS}")
+    print(f"  Reviews: {TOTAL_REVIEWS}")
+
+    print("\n[1/4] Generating users...")
+    users = generate_users(TOTAL_USERS)
+
+    print("[2/4] Generating books...")
+    books = generate_books(TOTAL_BOOKS)
+
+    print("[3/4] Generating reviews...")
+    reviews = generate_reviews(books, users, TOTAL_REVIEWS)
+
+    print("[4/4] Applying ratings to books...")
+    books = apply_ratings_to_books(books, reviews)
+
+    // Summary statistics
+    categories = {}
+    for book in books:
+        cat = book["category"]
+        categories[cat] = categories.get(cat, 0) + 1
+
+    avg_rating = np.mean([b["averageRating"] for b in books if b["averageRating"] > 0])
+    avg_checkouts = np.mean([b["totalCheckouts"] for b in books])
+    books_with_reviews = len([b for b in books if b["totalRatings"] > 0])
+
+    print(f"\n=== Data Generation Summary ===")
+    print(f"Total books:        {len(books)}")
+    print(f"Total users:        {len(users)}")
+    print(f"Total reviews:      {len(reviews)}")
+    print(f"Books with reviews: {books_with_reviews}")
+    print(f"Avg rating:         {avg_rating:.2f}")
+    print(f"Avg checkouts:      {avg_checkouts:.1f}")
+    print(f"\nCategory distribution:")
+    for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
+        print(f"  {cat:15s} {count:5d} ({count/len(books)*100:.1f}%)")
+
+    data = {
+        "books": books,
+        "users": users,
+        "reviews": reviews,
+        "metadata": {
+            "totalBooks": len(books),
+            "totalUsers": len(users),
+            "totalReviews": len(reviews),
+            "generatedAt": str(LocalDate.now()),
+            "version": "1.0"
+        }
+    }
+
+    return data
+
+def save_data(data: dict, output_dir: str = "backend/data"):
+    """Save generated data to JSON files."""
+    import os
+    os.makedirs(output_dir, exist_ok=True)
+
+    with open(f"{output_dir}/books.json", "w") as f:
+        json.dump(data["books"], f, indent=2)
+
+    with open(f"{output_dir}/users.json", "w") as f:
+        json.dump(data["users"], f, indent=2)
+
+    with open(f"{output_dir}/reviews.json", "w") as f:
+        json.dump(data["reviews"], f, indent=2)
+
+    with open(f"{output_dir}/metadata.json", "w") as f:
+        json.dump(data["metadata"], f, indent=2)
+
+    print(f"\nData saved to {output_dir}/")
+    print(f"  books.json:    {len(data['books'])} records")
+    print(f"  users.json:    {len(data['users'])} records")
+    print(f"  reviews.json:  {len(data['reviews'])} records")
+
+// ─── Entry Point ───────────────────────────────────────────
+
+if __name__ == "__main__":
+    data = generate_all_data()
+    save_data(data)

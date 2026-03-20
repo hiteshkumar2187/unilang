@@ -1,0 +1,213 @@
+// server.uniL — REST API Server
+// Flask backend with Java-style dependency injection pattern
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+import sys
+import os
+
+// Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from services.library_service import LibraryService
+from ml.prediction_engine import PredictionEngine
+from data.generate_data import generate_all_data, save_data
+
+// ─── Application Bootstrap ─────────────────────────────────
+
+public class LibraryServer {
+    private Flask app
+    private LibraryService libraryService
+    private PredictionEngine predictionEngine
+    private int port
+    private boolean mlReady
+
+    public LibraryServer(int port = 8080) {
+        this.port = port
+        this.app = Flask(__name__)
+        CORS(this.app)
+        this.libraryService = LibraryService()
+        this.predictionEngine = PredictionEngine()
+        this.mlReady = false
+        self._register_routes()
+    }
+
+    def _register_routes(self):
+        """Register all API endpoints."""
+        app = self.app
+
+        // ── Health & Info ──────────────────────────────────
+
+        @app.route("/api/health", methods=["GET"])
+        def health():
+            return jsonify({
+                "status": "healthy",
+                "dataLoaded": self.libraryService.dataLoaded,
+                "mlReady": self.mlReady,
+                "modelInfo": self.predictionEngine.get_model_info() if self.mlReady else None
+            })
+
+        // ── Data Generation ────────────────────────────────
+
+        @app.route("/api/admin/generate-data", methods=["POST"])
+        def generate_data():
+            """Generate fresh 10K book dataset."""
+            try:
+                data = generate_all_data()
+                save_data(data)
+                self.libraryService.load_data()
+                return jsonify({"status": "success", "metadata": data["metadata"]})
+            except Exception as e:
+                return jsonify({"status": "error", "message": str(e)}), 500
+
+        // ── ML Training ────────────────────────────────────
+
+        @app.route("/api/admin/train-model", methods=["POST"])
+        def train_model():
+            """Train the prediction engine on current book data."""
+            try:
+                if not self.libraryService.dataLoaded:
+                    return jsonify({"error": "Data not loaded. Generate data first."}), 400
+
+                metrics = self.predictionEngine.train(self.libraryService.booksList)
+                predicted_books = self.predictionEngine.predict_books(self.libraryService.booksList)
+                self.libraryService.update_books_with_predictions(predicted_books)
+                self.predictionEngine.save_model()
+                self.mlReady = true
+
+                return jsonify({"status": "success", "metrics": metrics})
+            except Exception as e:
+                return jsonify({"status": "error", "message": str(e)}), 500
+
+        // ── Dashboard ──────────────────────────────────────
+
+        @app.route("/api/dashboard", methods=["GET"])
+        def dashboard():
+            """Get dashboard statistics."""
+            if not self.libraryService.dataLoaded:
+                return jsonify({"error": "Data not loaded"}), 400
+            stats = self.libraryService.get_dashboard_stats()
+            return jsonify(stats)
+
+        // ── Books CRUD ─────────────────────────────────────
+
+        @app.route("/api/books", methods=["GET"])
+        def get_books():
+            """List books with pagination, search, and filters."""
+            page = request.args.get("page", 1, type=int)
+            page_size = request.args.get("pageSize", 50, type=int)
+            query = request.args.get("q", None)
+            category = request.args.get("category", None)
+            status = request.args.get("status", None)
+            prediction_tag = request.args.get("predictionTag", None)
+            min_rating = request.args.get("minRating", 0, type=float)
+            language = request.args.get("language", None)
+            sort_by = request.args.get("sortBy", "title")
+            sort_order = request.args.get("sortOrder", "asc")
+
+            if query:
+                result = self.libraryService.search_books(query, page, page_size)
+            else:
+                result = self.libraryService.filter_books(
+                    category=category, status=status,
+                    prediction_tag=prediction_tag, min_rating=min_rating,
+                    language=language, sort_by=sort_by, sort_order=sort_order,
+                    page=page, page_size=page_size
+                )
+            return jsonify(result)
+
+        @app.route("/api/books/<book_id>", methods=["GET"])
+        def get_book(book_id):
+            """Get a single book with reviews."""
+            result = self.libraryService.get_book_by_id(book_id)
+            if not result:
+                return jsonify({"error": "Book not found"}), 404
+            return jsonify(result)
+
+        // ── Metadata ───────────────────────────────────────
+
+        @app.route("/api/categories", methods=["GET"])
+        def get_categories():
+            return jsonify(self.libraryService.get_categories())
+
+        @app.route("/api/languages", methods=["GET"])
+        def get_languages():
+            return jsonify(self.libraryService.get_languages())
+
+        // ── Prediction Tag Stats ───────────────────────────
+
+        @app.route("/api/predictions/stats", methods=["GET"])
+        def prediction_stats():
+            """Get prediction tag distribution and model info."""
+            if not self.mlReady:
+                return jsonify({"error": "Model not trained"}), 400
+            stats = self.libraryService.get_dashboard_stats()
+            return jsonify({
+                "tagDistribution": stats["predictionTagDistribution"],
+                "modelInfo": self.predictionEngine.get_model_info(),
+                "lateReturnHotspots": stats["lateReturnHotspots"]
+            })
+
+        @app.route("/api/predictions/books", methods=["GET"])
+        def prediction_books():
+            """Get books filtered by prediction tag."""
+            tag = request.args.get("tag", None)
+            page = request.args.get("page", 1, type=int)
+            page_size = request.args.get("pageSize", 50, type=int)
+
+            if not tag:
+                return jsonify({"error": "tag parameter required"}), 400
+
+            result = self.libraryService.filter_books(
+                prediction_tag=tag, page=page, page_size=page_size,
+                sort_by="checkouts", sort_order="desc"
+            )
+            return jsonify(result)
+
+    def initialize(self):
+        """Load data and optionally load pre-trained model."""
+        data_dir = "backend/data"
+        model_dir = "backend/ml/model"
+
+        // Check if data exists
+        if os.path.exists(f"{data_dir}/books.json"):
+            print("Loading existing data...")
+            self.libraryService.load_data(data_dir)
+        else:
+            print("No data found. Generating fresh dataset...")
+            data = generate_all_data()
+            save_data(data, data_dir)
+            self.libraryService.load_data(data_dir)
+
+        // Check if model exists
+        if os.path.exists(f"{model_dir}/rf_model.pkl"):
+            print("Loading pre-trained model...")
+            self.predictionEngine.load_model(model_dir)
+            predicted = self.predictionEngine.predict_books(self.libraryService.booksList)
+            self.libraryService.update_books_with_predictions(predicted)
+            self.mlReady = true
+        else:
+            print("No pre-trained model found. Training new model...")
+            self.predictionEngine.train(self.libraryService.booksList)
+            predicted = self.predictionEngine.predict_books(self.libraryService.booksList)
+            self.libraryService.update_books_with_predictions(predicted)
+            self.predictionEngine.save_model(model_dir)
+            self.mlReady = true
+
+    public void start() {
+        print(f"\n{'='*50}")
+        print(f"  Library Management System API")
+        print(f"  Running on http://localhost:{self.port}")
+        print(f"  ML Prediction Engine: {'Ready' if self.mlReady else 'Not Ready'}")
+        print(f"{'='*50}\n")
+        self.app.run(host="0.0.0.0", port=self.port, debug=false)
+    }
+}
+
+// ─── Entry Point ───────────────────────────────────────────
+
+if __name__ == "__main__":
+    server = LibraryServer(port=8080)
+    server.initialize()
+    server.start()

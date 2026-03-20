@@ -1,0 +1,58 @@
+appId: org.unilang.ide
+productName: UniLang IDE
+copyright: Copyright (c) 2026 UniLang Contributors
+
+directories:
+  output: dist/
+  buildResources: build/
+
+files:
+  - src/**/*
+  - package.json
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  icon: build/icon.icns
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  icon: build/icons
+  maintainer: UniLang Contributors
+
+deb:
+  depends:
+    - gconf2
+    - gconf-service
+    - libnotify4
+    - libappindicator1
+    - libxtst6
+    - libnss3

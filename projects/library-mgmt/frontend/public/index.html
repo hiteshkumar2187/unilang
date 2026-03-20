@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Library Management System — Dashboard</title>
+    <link rel="stylesheet" href="src/styles/main.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">📚 LibraryOS</h1>
+                <span class="badge">UniLang</span>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">📊</span> Dashboard
+                </a>
+                <a href="#" class="nav-item" data-view="books">
+                    <span class="nav-icon">📖</span> Books
+                </a>
+                <a href="#" class="nav-item" data-view="predictions">
+                    <span class="nav-icon">🤖</span> ML Predictions
+                </a>
+                <a href="#" class="nav-item" data-view="analytics">
+                    <span class="nav-icon">📈</span> Analytics
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="server-status" id="serverStatus">
+                    <span class="status-dot offline"></span>
+                    <span>Checking server...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-bar">
+                <div class="search-container">
+                    <input type="text" id="globalSearch" class="search-input"
+                           placeholder="Search books by title, author, or ISBN...">
+                    <button class="search-btn" id="searchBtn">Search</button>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="refreshBtn">↻ Refresh</button>
+                    <button class="btn btn-primary" id="trainModelBtn">Train ML Model</button>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <div id="dashboardView" class="view active">
+                <div class="view-header">
+                    <h2>Dashboard Overview</h2>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalBooks">—</div>
+                        <div class="stat-label">Total Books</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="availableBooks">—</div>
+                        <div class="stat-label">Available</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="checkedOutBooks">—</div>
+                        <div class="stat-label">Checked Out</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalReviews">—</div>
+                        <div class="stat-label">Reviews</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="avgRating">—</div>
+                        <div class="stat-label">Avg Rating</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalCheckouts">—</div>
+                        <div class="stat-label">Total Checkouts</div>
+                    </div>
+                </div>
+
+                <!-- Two-column layout -->
+                <div class="dashboard-grid">
+                    <!-- Top Checked Out -->
+                    <div class="card">
+                        <h3 class="card-title">🏆 Most Checked Out Books</h3>
+                        <div class="table-container" id="topCheckedOutTable"></div>
+                    </div>
+
+                    <!-- Top Rated -->
+                    <div class="card">
+                        <h3 class="card-title">⭐ Highest Rated Books</h3>
+                        <div class="table-container" id="topRatedTable"></div>
+                    </div>
+
+                    <!-- Prediction Distribution -->
+                    <div class="card">
+                        <h3 class="card-title">🤖 Prediction Tag Distribution</h3>
+                        <div id="predictionChart" class="chart-container"></div>
+                    </div>
+
+                    <!-- Late Return Hotspots -->
+                    <div class="card">
+                        <h3 class="card-title">⚠️ Late Return Hotspots</h3>
+                        <div class="table-container" id="lateReturnTable"></div>
+                    </div>
+                </div>
+
+                <!-- Category Distribution -->
+                <div class="card full-width">
+                    <h3 class="card-title">📂 Category Distribution</h3>
+                    <div id="categoryChart" class="bar-chart-container"></div>
+                </div>
+            </div>
+
+            <!-- Books View -->
+            <div id="booksView" class="view">
+                <div class="view-header">
+                    <h2>Book Catalog</h2>
+                    <div class="filter-bar">
+                        <select id="categoryFilter" class="filter-select">
+                            <option value="">All Categories</option>
+                        </select>
+                        <select id="statusFilter" class="filter-select">
+                            <option value="">All Statuses</option>
+                            <option value="available">Available</option>
+                            <option value="checked_out">Checked Out</option>
+                            <option value="reserved">Reserved</option>
+                            <option value="lost">Lost</option>
+                            <option value="maintenance">Maintenance</option>
+                        </select>
+                        <select id="tagFilter" class="filter-select">
+                            <option value="">All Tags</option>
+                            <option value="most_likely_booked">Most Likely Booked</option>
+                            <option value="late_return">Late Return</option>
+                            <option value="on_time_return">On-Time Return</option>
+                            <option value="less_likely_booked">Less Likely Booked</option>
+                        </select>
+                        <select id="languageFilter" class="filter-select">
+                            <option value="">All Languages</option>
+                        </select>
+                        <select id="sortBy" class="filter-select">
+                            <option value="title">Sort by Title</option>
+                            <option value="rating">Sort by Rating</option>
+                            <option value="checkouts">Sort by Checkouts</option>
+                            <option value="year">Sort by Year</option>
+                            <option value="lateRate">Sort by Late Rate</option>
+                        </select>
+                        <select id="sortOrder" class="filter-select">
+                            <option value="asc">Ascending</option>
+                            <option value="desc">Descending</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="booksTable">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Author</th>
+                                <th>Category</th>
+                                <th>Rating</th>
+                                <th>Checkouts</th>
+                                <th>Status</th>
+                                <th>Prediction</th>
+                                <th>Late Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="booksTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="pagination" id="pagination"></div>
+            </div>
+
+            <!-- Predictions View -->
+            <div id="predictionsView" class="view">
+                <div class="view-header">
+                    <h2>ML Prediction Engine</h2>
+                </div>
+
+                <div class="ml-info-grid" id="mlInfoGrid">
+                    <div class="card">
+                        <h3 class="card-title">Model Status</h3>
+                        <div id="modelStatus"></div>
+                    </div>
+                    <div class="card">
+                        <h3 class="card-title">Tag Distribution</h3>
+                        <div id="tagDistributionDetail"></div>
+                    </div>
+                    <div class="card full-width">
+                        <h3 class="card-title">Late Return Risk — Top Books</h3>
+                        <div class="table-container" id="riskTable"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics View -->
+            <div id="analyticsView" class="view">
+                <div class="view-header">
+                    <h2>Analytics</h2>
+                </div>
+                <div class="analytics-grid">
+                    <div class="card full-width">
+                        <h3 class="card-title">Category Performance</h3>
+                        <div class="table-container" id="categoryAnalyticsTable"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Overlay -->
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="spinner"></div>
+                <p id="loadingText">Loading...</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Global helpers
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function formatTag(tag) {
+            if (!tag) return '—';
+            return tag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+    </script>
+    <script src="src/utils/api.js"></script>
+    <script src="src/components/dashboard.js"></script>
+    <script src="src/components/books.js"></script>
+    <script src="src/components/predictions.js"></script>
+    <script src="src/components/analytics.js"></script>
+    <script src="src/app.js"></script>
+</body>
+</html>

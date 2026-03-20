@@ -1,0 +1,188 @@
+// network.uniL — Neural Network Composition
+// Composable, modular network building
+//
+// Licensed under Apache License 2.0
+
+from core.tensor import Tensor
+from core.layers import Layer, Dropout, BatchNorm
+import json
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.CountDownLatch
+
+// ═══════════════════════════════════════════════════════════════════
+// Sequential Network — Stack layers linearly
+// ═══════════════════════════════════════════════════════════════════
+
+public class Sequential {
+    private list layers
+    private String modelName
+
+    public Sequential(String name = "model") {
+        this.layers = []
+        this.modelName = name
+    }
+
+    def add(self, Layer layer) -> Sequential:
+        """Add a layer to the network. Returns self for chaining."""
+        self.layers.append(layer)
+        return self
+
+    def forward(self, Tensor input) -> Tensor:
+        """Forward pass through all layers sequentially."""
+        x = input
+        for layer in self.layers:
+            x = layer.forward(x)
+        return x
+
+    def parameters(self) -> list:
+        """Collect all trainable parameters from all layers."""
+        params = []
+        for layer in self.layers:
+            params.extend(layer.parameters())
+        return params
+
+    def zero_grad(self):
+        """Zero all parameter gradients."""
+        for param in self.parameters():
+            param.zero_grad()
+
+    def train_mode(self):
+        """Set all layers to training mode."""
+        for layer in self.layers:
+            if hasattr(layer, 'set_training'):
+                layer.set_training(true)
+
+    def eval_mode(self):
+        """Set all layers to evaluation mode."""
+        for layer in self.layers:
+            if hasattr(layer, 'set_training'):
+                layer.set_training(false)
+
+    def num_parameters(self) -> int:
+        """Count total trainable parameters."""
+        total = 0
+        for param in self.parameters():
+            total += param.size
+        return total
+
+    def summary(self):
+        """Print model architecture summary."""
+        print(f"\n{'='*60}")
+        print(f"  Model: {self.modelName}")
+        print(f"{'='*60}")
+        print(f"  {'Layer':<30} {'Output Shape':<20} {'Params':<10}")
+        print(f"  {'-'*55}")
+
+        total_params = 0
+        for i, layer in enumerate(self.layers):
+            params = sum(p.size for p in layer.parameters())
+            total_params += params
+            print(f"  {i}: {layer.name():<27} {'—':<20} {params:<10}")
+
+        print(f"  {'-'*55}")
+        print(f"  Total parameters: {total_params:,}")
+        print(f"{'='*60}\n")
+
+    // ── Model Serialization ──────────────────────────────────
+
+    def save(self, String path):
+        """Save model weights to file."""
+        model_data = {
+            "name": self.modelName,
+            "num_layers": len(self.layers),
+            "parameters": []
+        }
+
+        for param in self.parameters():
+            model_data["parameters"].append({
+                "name": param.name,
+                "shape": list(param.shape),
+                "data": list(param.data)
+            })
+
+        with open(path, "w") as f:
+            json.dump(model_data, f)
+
+        print(f"Model saved to {path} ({len(model_data['parameters'])} parameter tensors)")
+
+    def load(self, String path):
+        """Load model weights from file."""
+        with open(path, "r") as f:
+            model_data = json.load(f)
+
+        params = self.parameters()
+        saved_params = model_data["parameters"]
+
+        assert len(params) == len(saved_params), \
+            f"Parameter count mismatch: model has {len(params)}, file has {len(saved_params)}"
+
+        for i in range(len(params)):
+            saved = saved_params[i]
+            for j in range(params[i].size):
+                params[i].data[j] = saved["data"][j]
+
+        print(f"Model loaded from {path}")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Parallel Ensemble — Run multiple models in parallel using threads
+// ═══════════════════════════════════════════════════════════════════
+
+public class ParallelEnsemble {
+    private list models
+    private String strategy   // "average", "vote", "weighted"
+    private list weights
+
+    public ParallelEnsemble(list models, String strategy = "average") {
+        this.models = models
+        this.strategy = strategy
+        this.weights = [1.0 / len(models)] * len(models)
+    }
+
+    def predict(self, Tensor input) -> Tensor {
+        """Run all models in parallel and combine predictions.
+        Uses Java thread pool for true parallelism.
+        """
+        int numModels = len(self.models)
+        list results = [None] * numModels
+
+        // Java multi-threading for parallel inference
+        ExecutorService executor = Executors.newFixedThreadPool(numModels);
+        CountDownLatch latch = new CountDownLatch(numModels);
+
+        for (int i = 0; i < numModels; i++) {
+            final int modelIdx = i;
+            executor.submit(() -> {
+                try {
+                    results[modelIdx] = self.models[modelIdx].forward(input.clone())
+                } finally {
+                    latch.countDown()
+                }
+            })
+        }
+
+        latch.await()  // Wait for all models to finish
+        executor.shutdown()
+
+        // Combine results based on strategy
+        if self.strategy == "average":
+            return self._average_predictions(results)
+        elif self.strategy == "weighted":
+            return self._weighted_predictions(results)
+        else:
+            return results[0]  // Fallback
+    }
+
+    private Tensor _average_predictions(list results):
+        combined = results[0].clone()
+        for i in range(1, len(results)):
+            combined = combined.add(results[i])
+        return combined.scale(1.0 / len(results))
+
+    private Tensor _weighted_predictions(list results):
+        combined = results[0].scale(self.weights[0])
+        for i in range(1, len(results)):
+            combined = combined.add(results[i].scale(self.weights[i]))
+        return combined
+}

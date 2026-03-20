@@ -1,0 +1,214 @@
+{
+  "Python Function": {
+    "prefix": "defpy",
+    "body": [
+      "def ${1:function_name}(${2:params})${3: -> ${4:return_type}}:",
+      "    ${5:pass}",
+      "$0"
+    ],
+    "description": "Python-style function definition"
+  },
+  "Java Method": {
+    "prefix": "defjava",
+    "body": [
+      "${1|public,private,protected|} ${2|void,int,String,boolean,float,double|} ${3:methodName}(${4:params}) {",
+      "    ${5:// body}",
+      "    ${6:return ${7:value};}",
+      "}",
+      "$0"
+    ],
+    "description": "Java-style method definition"
+  },
+  "Python Class": {
+    "prefix": "classpy",
+    "body": [
+      "class ${1:ClassName}${2:(${3:BaseClass})}:",
+      "    def __init__(self${4:, ${5:params}}):",
+      "        ${6:self.${7:attr} = ${7:attr}}",
+      "",
+      "    def ${8:method}(self${9:, ${10:params}}):",
+      "        ${11:pass}",
+      "$0"
+    ],
+    "description": "Python-style class definition"
+  },
+  "Java Class": {
+    "prefix": "classjava",
+    "body": [
+      "${1|public,private|} class ${2:ClassName}${3: extends ${4:BaseClass}}${5: implements ${6:Interface}} {",
+      "    ${7:private ${8:String} ${9:field};}",
+      "",
+      "    public ${2:ClassName}(${10:params}) {",
+      "        ${11:// constructor}",
+      "    }",
+      "",
+      "    ${12|public,private,protected|} ${13|void,int,String,boolean|} ${14:method}(${15:params}) {",
+      "        ${16:// body}",
+      "    }",
+      "}",
+      "$0"
+    ],
+    "description": "Java-style class definition"
+  },
+  "Python If": {
+    "prefix": "ifpy",
+    "body": [
+      "if ${1:condition}:",
+      "    ${2:pass}",
+      "${3:elif ${4:condition}:}",
+      "    ${5:pass}",
+      "${6:else:}",
+      "    ${7:pass}",
+      "$0"
+    ],
+    "description": "Python-style if/elif/else block"
+  },
+  "Java If": {
+    "prefix": "ifjava",
+    "body": [
+      "if (${1:condition}) {",
+      "    ${2:// body}",
+      "} else if (${3:condition}) {",
+      "    ${4:// body}",
+      "} else {",
+      "    ${5:// body}",
+      "}",
+      "$0"
+    ],
+    "description": "Java-style if/else block"
+  },
+  "Python For Loop": {
+    "prefix": "for",
+    "body": [
+      "for ${1:item} in ${2:iterable}:",
+      "    ${3:pass}",
+      "$0"
+    ],
+    "description": "Python-style for loop"
+  },
+  "Java For Loop": {
+    "prefix": "forj",
+    "body": [
+      "for (${1:int} ${2:i} = ${3:0}; ${2:i} < ${4:length}; ${2:i}++) {",
+      "    ${5:// body}",
+      "}",
+      "$0"
+    ],
+    "description": "Java-style for loop"
+  },
+  "Python Try/Except": {
+    "prefix": "try",
+    "body": [
+      "try:",
+      "    ${1:pass}",
+      "except ${2:Exception} as ${3:e}:",
+      "    ${4:print(f\"Error: {${3:e}}\")}",
+      "${5:finally:}",
+      "    ${6:pass}",
+      "$0"
+    ],
+    "description": "Python-style try/except block"
+  },
+  "Java Try/Catch": {
+    "prefix": "trycatch",
+    "body": [
+      "try {",
+      "    ${1:// body}",
+      "} catch (${2:Exception} ${3:e}) {",
+      "    ${4:e.printStackTrace();}",
+      "} finally {",
+      "    ${5:// cleanup}",
+      "}",
+      "$0"
+    ],
+    "description": "Java-style try/catch/finally block"
+  },
+  "Java Main Method": {
+    "prefix": "main",
+    "body": [
+      "public static void main(String[] args) {",
+      "    ${1:// entry point}",
+      "    $0",
+      "}"
+    ],
+    "description": "Java-style main method"
+  },
+  "Import": {
+    "prefix": "import",
+    "body": [
+      "import ${1:module}",
+      "$0"
+    ],
+    "description": "Import statement"
+  },
+  "From Import": {
+    "prefix": "fromimport",
+    "body": [
+      "from ${1:module} import ${2:name}",
+      "$0"
+    ],
+    "description": "From-import statement"
+  },
+  "F-String": {
+    "prefix": "fstring",
+    "body": [
+      "f\"${1:text} {${2:expression}}${3: text}\"$0"
+    ],
+    "description": "Python f-string with interpolation"
+  },
+  "Thread Pool Pattern": {
+    "prefix": "thread",
+    "body": [
+      "import concurrent.futures",
+      "",
+      "# Create a thread pool executor",
+      "with concurrent.futures.ThreadPoolExecutor(max_workers=${1:4}) as executor:",
+      "    futures = []",
+      "    for ${2:item} in ${3:items}:",
+      "        future = executor.submit(${4:task_function}, ${2:item})",
+      "        futures.append(future)",
+      "",
+      "    for future in concurrent.futures.as_completed(futures):",
+      "        result = future.result()",
+      "        ${5:print(f\"Result: {result}\")}",
+      "$0"
+    ],
+    "description": "Java-style thread pool executor pattern"
+  },
+  "ML Model Skeleton": {
+    "prefix": "mlmodel",
+    "body": [
+      "class ${1:ModelName}:",
+      "    \"\"\"${2:A machine learning model for ${3:task}}.\"\"\"",
+      "",
+      "    def __init__(self, ${4:input_dim}: int, ${5:output_dim}: int):",
+      "        self.${4:input_dim} = ${4:input_dim}",
+      "        self.${5:output_dim} = ${5:output_dim}",
+      "        self.weights = None",
+      "        self.is_trained = False",
+      "",
+      "    def fit(self, X, y, epochs: int = ${6:100}, lr: float = ${7:0.01}):",
+      "        \"\"\"Train the model on data.\"\"\"",
+      "        ${8:# Initialize weights}",
+      "        ${9:# Training loop}",
+      "        for epoch in range(epochs):",
+      "            ${10:pass}",
+      "        self.is_trained = True",
+      "        return self",
+      "",
+      "    def predict(self, X):",
+      "        \"\"\"Make predictions on new data.\"\"\"",
+      "        if not self.is_trained:",
+      "            raise RuntimeError(\"Model must be trained before prediction\")",
+      "        ${11:return X}",
+      "",
+      "    def evaluate(self, X, y) -> dict:",
+      "        \"\"\"Evaluate model performance.\"\"\"",
+      "        predictions = self.predict(X)",
+      "        ${12:# Calculate metrics}",
+      "        return {\"accuracy\": ${13:0.0}}",
+      "$0"
+    ],
+    "description": "ML model class skeleton with fit/predict/evaluate"
+  }
+}

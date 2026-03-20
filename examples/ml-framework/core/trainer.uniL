@@ -1,0 +1,250 @@
+// trainer.uniL — Training Loop Engine
+// Handles the full training lifecycle with metrics tracking
+//
+// Licensed under Apache License 2.0
+
+from core.tensor import Tensor
+from core.network import Sequential
+from core.loss import LossFunction
+from core.optimizers import Optimizer
+import time
+import java.util.concurrent.Executors
+
+// ═══════════════════════════════════════════════════════════════════
+// Data Utilities
+// ═══════════════════════════════════════════════════════════════════
+
+def create_batches(Tensor X, Tensor y, int batchSize) -> list:
+    """Split data into mini-batches."""
+    batches = []
+    numSamples = X.shape[0]
+
+    for start in range(0, numSamples, batchSize):
+        end = min(start + batchSize, numSamples)
+        actualBatch = end - start
+        numFeatures = X.shape[1]
+
+        // Slice X
+        batchX = Tensor([actualBatch, numFeatures], requiresGrad=false)
+        for i in range(actualBatch):
+            for j in range(numFeatures):
+                batchX.data[i * numFeatures + j] = X.data[(start + i) * numFeatures + j]
+
+        // Slice y
+        if len(y.shape) == 2:
+            numOutputs = y.shape[1]
+            batchY = Tensor([actualBatch, numOutputs], requiresGrad=false)
+            for i in range(actualBatch):
+                for j in range(numOutputs):
+                    batchY.data[i * numOutputs + j] = y.data[(start + i) * numOutputs + j]
+        else:
+            batchY = Tensor([actualBatch], requiresGrad=false)
+            for i in range(actualBatch):
+                batchY.data[i] = y.data[start + i]
+
+        batches.append((batchX, batchY))
+
+    return batches
+
+def shuffle_data(Tensor X, Tensor y) -> tuple:
+    """Shuffle dataset (in-place for efficiency)."""
+    import random
+    n = X.shape[0]
+    features = X.shape[1]
+    y_cols = y.shape[1] if len(y.shape) == 2 else 1
+    y_is_2d = len(y.shape) == 2
+
+    indices = list(range(n))
+    random.shuffle(indices)
+
+    newX = Tensor(X.shape[:])
+    newY = Tensor(y.shape[:])
+
+    for new_i, old_i in enumerate(indices):
+        for j in range(features):
+            newX.data[new_i * features + j] = X.data[old_i * features + j]
+        if y_is_2d:
+            for j in range(y_cols):
+                newY.data[new_i * y_cols + j] = y.data[old_i * y_cols + j]
+        else:
+            newY.data[new_i] = y.data[old_i]
+
+    return (newX, newY)
+
+// ═══════════════════════════════════════════════════════════════════
+// Trainer — Orchestrates training with metrics
+// ═══════════════════════════════════════════════════════════════════
+
+public class Trainer {
+    private Sequential model
+    private LossFunction lossFunction
+    private Optimizer optimizer
+    private list history    // Training metrics per epoch
+
+    public Trainer(Sequential model, LossFunction loss, Optimizer optimizer) {
+        this.model = model
+        this.lossFunction = loss
+        this.optimizer = optimizer
+        this.history = []
+    }
+
+    def fit(self, Tensor X_train, Tensor y_train,
+            int epochs = 100, int batchSize = 32,
+            Tensor X_val = None, Tensor y_val = None,
+            int printEvery = 10, boolean shuffle = true) -> dict:
+        """
+        Train the model.
+
+        Parameters:
+            X_train:    Training features (samples, features)
+            y_train:    Training targets
+            epochs:     Number of training epochs
+            batchSize:  Mini-batch size
+            X_val:      Validation features (optional)
+            y_val:      Validation targets (optional)
+            printEvery: Print metrics every N epochs
+            shuffle:    Shuffle data each epoch
+
+        Returns:
+            Training history dictionary
+        """
+        numSamples = X_train.shape[0]
+        numBatches = (numSamples + batchSize - 1) // batchSize
+
+        print(f"\n{'='*60}")
+        print(f"  Training: {self.model.modelName}")
+        print(f"  Samples: {numSamples} | Batch: {batchSize} | Epochs: {epochs}")
+        print(f"  Loss: {self.lossFunction.name()} | Optimizer: {self.optimizer.name()}")
+        print(f"  Parameters: {self.model.num_parameters():,}")
+        print(f"{'='*60}\n")
+
+        startTime = time.time()
+
+        for epoch in range(1, epochs + 1):
+            self.model.train_mode()
+            epochLoss = 0.0
+
+            // Shuffle data each epoch
+            if shuffle:
+                X_shuffled, y_shuffled = shuffle_data(X_train, y_train)
+            else:
+                X_shuffled, y_shuffled = X_train, y_train
+
+            // Create mini-batches
+            batches = create_batches(X_shuffled, y_shuffled, batchSize)
+
+            for batchX, batchY in batches:
+                // Forward pass
+                self.optimizer.zero_grad()
+                predictions = self.model.forward(batchX)
+
+                // Compute loss
+                loss = self.lossFunction.compute(predictions, batchY)
+                epochLoss += loss.data[0]
+
+                // Backward pass
+                loss.backward()
+
+                // Update weights
+                self.optimizer.step()
+
+            // Average loss for this epoch
+            avgLoss = epochLoss / numBatches
+
+            // Validation
+            valLoss = None
+            valAccuracy = None
+            if X_val is not None and y_val is not None:
+                self.model.eval_mode()
+                valPred = self.model.forward(X_val)
+                valLossT = self.lossFunction.compute(valPred, y_val)
+                valLoss = valLossT.data[0]
+                valAccuracy = self._compute_accuracy(valPred, y_val)
+
+            // Record history
+            record = {
+                "epoch": epoch,
+                "train_loss": round(avgLoss, 6),
+                "val_loss": round(valLoss, 6) if valLoss is not None else None,
+                "val_accuracy": round(valAccuracy, 4) if valAccuracy is not None else None
+            }
+            self.history.append(record)
+
+            // Print progress
+            if epoch % printEvery == 0 or epoch == 1 or epoch == epochs:
+                elapsed = time.time() - startTime
+                msg = f"  Epoch {epoch:4d}/{epochs} | Loss: {avgLoss:.6f}"
+                if valLoss is not None:
+                    msg += f" | Val Loss: {valLoss:.6f}"
+                if valAccuracy is not None:
+                    msg += f" | Val Acc: {valAccuracy:.4f}"
+                msg += f" | Time: {elapsed:.1f}s"
+                print(msg)
+
+        totalTime = time.time() - startTime
+        print(f"\n  Training complete in {totalTime:.1f}s")
+        print(f"  Final loss: {self.history[-1]['train_loss']:.6f}")
+        if valAccuracy is not None:
+            print(f"  Final val accuracy: {self.history[-1]['val_accuracy']:.4f}")
+        print()
+
+        return {
+            "history": self.history,
+            "totalTime": round(totalTime, 2),
+            "finalLoss": self.history[-1]["train_loss"],
+            "finalValAccuracy": self.history[-1].get("val_accuracy")
+        }
+
+    def _compute_accuracy(self, Tensor predictions, Tensor targets) -> float:
+        """Compute classification accuracy."""
+        if len(predictions.shape) == 2 and predictions.shape[1] > 1:
+            // Multi-class: compare argmax
+            correct = 0
+            numSamples = predictions.shape[0]
+            numClasses = predictions.shape[1]
+
+            for i in range(numSamples):
+                predClass = 0
+                predMax = predictions.data[i * numClasses]
+                targetClass = 0
+                targetMax = targets.data[i * numClasses]
+
+                for c in range(1, numClasses):
+                    if predictions.data[i * numClasses + c] > predMax:
+                        predMax = predictions.data[i * numClasses + c]
+                        predClass = c
+                    if targets.data[i * numClasses + c] > targetMax:
+                        targetMax = targets.data[i * numClasses + c]
+                        targetClass = c
+
+                if predClass == targetClass:
+                    correct += 1
+
+            return correct / numSamples
+        else:
+            // Binary: threshold at 0.5
+            correct = 0
+            for i in range(predictions.size):
+                pred = 1 if predictions.data[i] > 0.5 else 0
+                target = 1 if targets.data[i] > 0.5 else 0
+                if pred == target:
+                    correct += 1
+            return correct / predictions.size
+
+    def predict(self, Tensor X) -> Tensor:
+        """Run inference."""
+        self.model.eval_mode()
+        return self.model.forward(X)
+
+    def evaluate(self, Tensor X, Tensor y) -> dict:
+        """Evaluate model on test data."""
+        self.model.eval_mode()
+        predictions = self.model.forward(X)
+        loss = self.lossFunction.compute(predictions, y)
+        accuracy = self._compute_accuracy(predictions, y)
+
+        return {
+            "loss": round(loss.data[0], 6),
+            "accuracy": round(accuracy, 4)
+        }
+}
