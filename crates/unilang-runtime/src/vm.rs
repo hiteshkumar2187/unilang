@@ -23,6 +23,9 @@ struct CallFrame {
     stack_base: usize,
 }
 
+/// Type alias for native builtin function implementations.
+pub type BuiltinFn = Box<dyn Fn(&[RuntimeValue]) -> Result<RuntimeValue, RuntimeError>>;
+
 /// The UniLang virtual machine.
 pub struct VM {
     /// Operand stack.
@@ -37,6 +40,8 @@ pub struct VM {
     classes: Vec<ClassDef>,
     /// Captured print output (for testing).
     output: Vec<String>,
+    /// Registered builtin functions.
+    builtins: HashMap<String, BuiltinFn>,
 }
 
 impl VM {
@@ -49,12 +54,30 @@ impl VM {
             functions: Vec::new(),
             classes: Vec::new(),
             output: Vec::new(),
+            builtins: HashMap::new(),
         }
     }
 
     /// Return captured print output.
     pub fn output(&self) -> &[String] {
         &self.output
+    }
+
+    /// Register a native built-in function.
+    pub fn register_builtin(
+        &mut self,
+        name: impl Into<String>,
+        func: impl Fn(&[RuntimeValue]) -> Result<RuntimeValue, RuntimeError> + 'static,
+    ) {
+        let name = name.into();
+        self.globals
+            .insert(name.clone(), RuntimeValue::NativeFunction(name.clone()));
+        self.builtins.insert(name, Box::new(func));
+    }
+
+    /// Set a global variable value.
+    pub fn set_global(&mut self, name: impl Into<String>, value: RuntimeValue) {
+        self.globals.insert(name.into(), value);
     }
 
     /// Run bytecode to completion and return the last value (or Null).
@@ -335,28 +358,28 @@ impl VM {
             Opcode::Lt => {
                 let b = self.pop()?;
                 let a = self.pop()?;
-                let result = a.partial_cmp(&b).map_or(false, |o| o.is_lt());
+                let result = a.partial_cmp(&b).is_some_and(|o| o.is_lt());
                 self.push(RuntimeValue::Bool(result));
             }
 
             Opcode::Gt => {
                 let b = self.pop()?;
                 let a = self.pop()?;
-                let result = a.partial_cmp(&b).map_or(false, |o| o.is_gt());
+                let result = a.partial_cmp(&b).is_some_and(|o| o.is_gt());
                 self.push(RuntimeValue::Bool(result));
             }
 
             Opcode::LtEq => {
                 let b = self.pop()?;
                 let a = self.pop()?;
-                let result = a.partial_cmp(&b).map_or(false, |o| o.is_le());
+                let result = a.partial_cmp(&b).is_some_and(|o| o.is_le());
                 self.push(RuntimeValue::Bool(result));
             }
 
             Opcode::GtEq => {
                 let b = self.pop()?;
                 let a = self.pop()?;
-                let result = a.partial_cmp(&b).map_or(false, |o| o.is_ge());
+                let result = a.partial_cmp(&b).is_some_and(|o| o.is_ge());
                 self.push(RuntimeValue::Bool(result));
             }
 
@@ -485,9 +508,8 @@ impl VM {
 
                         // Build locals: first n_args slots are the arguments.
                         let mut locals = vec![RuntimeValue::Null; func.local_count.max(n_args)];
-                        for i in 0..n_args {
-                            locals[i] = self.stack[stack_base + i].clone();
-                        }
+                        locals[..n_args]
+                            .clone_from_slice(&self.stack[stack_base..stack_base + n_args]);
                         // Remove arguments from the stack.
                         self.stack.truncate(stack_base);
 
@@ -514,6 +536,16 @@ impl VM {
                         println!("{}", text);
                         self.output.push(text);
                         self.push(RuntimeValue::Null);
+                    }
+                    RuntimeValue::NativeFunction(ref name) => {
+                        let name = name.clone();
+                        let mut args = Vec::new();
+                        for _ in 0..n_args {
+                            args.push(self.pop()?);
+                        }
+                        args.reverse();
+                        let result = self.call_builtin(&name, &args)?;
+                        self.push(result);
                     }
                     _ => {
                         return Err(RuntimeError::type_error(format!(
@@ -702,6 +734,33 @@ impl VM {
         }
 
         Ok(true)
+    }
+
+    /// Call a registered builtin function by name.
+    fn call_builtin(
+        &mut self,
+        name: &str,
+        args: &[RuntimeValue],
+    ) -> Result<RuntimeValue, RuntimeError> {
+        // Special handling for print — capture output
+        if name == "print" {
+            let text = args
+                .iter()
+                .map(|v| format!("{}", v))
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!("{}", text);
+            self.output.push(text);
+            return Ok(RuntimeValue::Null);
+        }
+        if let Some(func) = self.builtins.get(name) {
+            func(args)
+        } else {
+            Err(RuntimeError::type_error(format!(
+                "unknown builtin function '{}'",
+                name
+            )))
+        }
     }
 
     /// Helper for numeric binary operations.

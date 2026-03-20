@@ -470,7 +470,7 @@ impl Compiler {
 
         // Store loop variable.
         if let Expr::Ident(name) = &target.node {
-            let slot = self.define_local(&name);
+            let slot = self.define_local(name);
             self.emit(Opcode::LoadConst(Value::Null));
             self.emit(Opcode::StoreLocal(slot));
         }

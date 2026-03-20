@@ -19,7 +19,7 @@ fn spanned<T>(node: T) -> Spanned<T> {
 fn make_module(stmts: Vec<Stmt>) -> Module {
     Module {
         source_id: SourceId(0),
-        statements: stmts.into_iter().map(|s| spanned(s)).collect(),
+        statements: stmts.into_iter().map(spanned).collect(),
     }
 }
 
@@ -47,7 +47,7 @@ fn var_decl(name: &str, init: Option<Expr>) -> Stmt {
     Stmt::VarDecl(VarDecl {
         name: spanned(name.to_string()),
         type_ann: None,
-        initializer: init.map(|e| spanned(e)),
+        initializer: init.map(spanned),
         modifiers: Vec::new(),
         syntax: SyntaxOrigin::Python,
     })
@@ -63,7 +63,7 @@ fn empty_block() -> Block {
 fn block_with(stmts: Vec<Stmt>) -> Block {
     Block {
         style: BlockStyle::Braces,
-        statements: stmts.into_iter().map(|s| spanned(s)).collect(),
+        statements: stmts.into_iter().map(spanned).collect(),
     }
 }
 

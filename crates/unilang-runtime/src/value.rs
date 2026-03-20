@@ -22,6 +22,8 @@ pub enum RuntimeValue {
     Function(usize),
     /// An object instance.
     Instance(InstanceData),
+    /// A native (built-in) function, identified by name.
+    NativeFunction(std::string::String),
 }
 
 /// Data for an instantiated class.
@@ -44,6 +46,7 @@ impl RuntimeValue {
             RuntimeValue::Dict(pairs) => !pairs.is_empty(),
             RuntimeValue::Function(_) => true,
             RuntimeValue::Instance(_) => true,
+            RuntimeValue::NativeFunction(_) => true,
         }
     }
 
@@ -118,6 +121,7 @@ impl fmt::Display for RuntimeValue {
             }
             RuntimeValue::Function(idx) => write!(f, "<function {}>", idx),
             RuntimeValue::Instance(data) => write!(f, "<{} instance>", data.class_name),
+            RuntimeValue::NativeFunction(name) => write!(f, "<builtin {}>", name),
         }
     }
 }
@@ -144,6 +148,10 @@ impl PartialEq for RuntimeValue {
             (RuntimeValue::String(a), RuntimeValue::String(b)) => a == b,
             (RuntimeValue::Bool(a), RuntimeValue::Bool(b)) => a == b,
             (RuntimeValue::Null, RuntimeValue::Null) => true,
+            (RuntimeValue::List(a), RuntimeValue::List(b)) => a == b,
+            (RuntimeValue::Dict(a), RuntimeValue::Dict(b)) => a == b,
+            (RuntimeValue::Function(a), RuntimeValue::Function(b)) => a == b,
+            (RuntimeValue::NativeFunction(a), RuntimeValue::NativeFunction(b)) => a == b,
             _ => false,
         }
     }
