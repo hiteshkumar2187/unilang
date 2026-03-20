@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>UniLang IDE</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <button id="btn-new" title="New File (Ctrl+N)">
+      <span class="toolbar-icon">+</span> New
+    </button>
+    <button id="btn-open" title="Open File (Ctrl+O)">
+      <span class="toolbar-icon">&#128194;</span> Open
+    </button>
+    <button id="btn-open-folder" title="Open Folder (Ctrl+Shift+O)">
+      <span class="toolbar-icon">&#128193;</span> Folder
+    </button>
+    <div class="toolbar-separator"></div>
+    <button id="btn-save" title="Save (Ctrl+S)">
+      <span class="toolbar-icon">&#128190;</span> Save
+    </button>
+    <div class="toolbar-separator"></div>
+    <button id="btn-build" title="Build (Ctrl+B)">
+      <span class="toolbar-icon">&#9881;</span> Build
+    </button>
+    <button id="btn-run" title="Run (Ctrl+R)">
+      <span class="toolbar-icon">&#9654;</span> Run
+    </button>
+  </div>
+
+  <!-- Main Content -->
+  <div id="main-container">
+    <!-- File Tree Panel -->
+    <div id="sidebar-panel">
+      <div class="panel-header">
+        <span>EXPLORER</span>
+      </div>
+      <div id="file-tree"></div>
+    </div>
+
+    <!-- Sidebar Resize Handle -->
+    <div id="sidebar-resize" class="resize-handle-vertical"></div>
+
+    <!-- Editor + Terminal Area -->
+    <div id="editor-terminal-container">
+      <!-- Editor Panel -->
+      <div id="editor-panel">
+        <div id="editor-tabs">
+          <span id="editor-tab-placeholder" class="tab-placeholder">No file open</span>
+        </div>
+        <div id="editor-container">
+          <div id="line-numbers"></div>
+          <div id="editor-wrapper">
+            <div id="highlight-overlay" aria-hidden="true"></div>
+            <textarea id="code-editor" spellcheck="false" placeholder="Open a .uniL file or start typing..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal Resize Handle -->
+      <div id="terminal-resize" class="resize-handle-horizontal"></div>
+
+      <!-- Terminal Panel -->
+      <div id="terminal-panel">
+        <div class="panel-header">
+          <span>OUTPUT</span>
+          <button id="btn-clear-terminal" title="Clear Output">Clear</button>
+        </div>
+        <div id="terminal-output"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div id="status-bar">
+    <div id="status-left">
+      <span id="status-filename">No file</span>
+    </div>
+    <div id="status-right">
+      <span id="status-position">Ln 1, Col 1</span>
+      <span class="status-separator">|</span>
+      <span id="status-language">UniLang</span>
+    </div>
+  </div>
+
+  <script src="editor.js"></script>
+  <script src="file-tree.js"></script>
+  <script src="terminal.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

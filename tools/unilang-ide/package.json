@@ -1,0 +1,25 @@
+{
+  "name": "unilang-ide",
+  "version": "0.1.0",
+  "description": "A lightweight Electron-based IDE for the UniLang programming language",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --mac --win --linux"
+  },
+  "keywords": [
+    "unilang",
+    "ide",
+    "editor",
+    "electron"
+  ],
+  "author": "UniLang Contributors",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0"
+  }
+}

@@ -1,0 +1,263 @@
+// inference_example.uniL — Load and Use a Pre-trained UniNN Model
+// Shows how to load a published model and run inference
+//
+// Licensed under Apache License 2.0
+
+from core.tensor import Tensor
+from models.uniNN import UniNN
+from core.network import ParallelEnsemble
+import json
+import time
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+
+// ═══════════════════════════════════════════════════════════════════
+// Example 1: Load and Predict with Single Model
+// ═══════════════════════════════════════════════════════════════════
+
+def single_model_inference():
+    print("═══════════════════════════════════════════════════════════")
+    print("  Example 1: Single Model Inference")
+    print("═══════════════════════════════════════════════════════════\n")
+
+    // Load the published model
+    model = UniNN.load("examples/ml-framework/models/trained/uniNN_spiral_v1.json")
+    model.eval_mode()
+    model.summary()
+
+    // Create test inputs (2D points to classify)
+    testPoints = [
+        [0.5, 0.5],     // Near center
+        [3.0, 0.0],     // Along x-axis
+        [0.0, 3.0],     // Along y-axis
+        [-2.0, -2.0],   // Diagonal
+        [4.0, 1.0],     // Outer region
+        [-1.0, 3.5],    // Top left
+    ]
+
+    classNames = ["Spiral A", "Spiral B", "Spiral C", "Spiral D"]
+
+    print("Predictions:")
+    print(f"  {'Point':<20} {'Predicted Class':<18} {'Confidence':<12} {'All Probs'}")
+    print(f"  {'─'*70}")
+
+    for point in testPoints:
+        // Create input tensor
+        input = Tensor.from_list([point], shape=[1, 2])
+
+        // Forward pass
+        startTime = time.time()
+        output = model.forward(input)
+        inferenceTime = (time.time() - startTime) * 1000  // ms
+
+        // Get prediction
+        probs = [round(output.data[i], 4) for i in range(4)]
+        predClass = probs.index(max(probs))
+        confidence = max(probs)
+
+        print(f"  ({point[0]:5.1f}, {point[1]:5.1f})    "
+              f"{classNames[predClass]:<18} "
+              f"{confidence:.4f}       "
+              f"{probs}")
+
+    print()
+
+// ═══════════════════════════════════════════════════════════════════
+// Example 2: Batch Inference with Java Threading
+// ═══════════════════════════════════════════════════════════════════
+
+def batch_inference_threaded():
+    print("═══════════════════════════════════════════════════════════")
+    print("  Example 2: Batch Inference with Java Thread Pool")
+    print("═══════════════════════════════════════════════════════════\n")
+
+    model = UniNN.load("examples/ml-framework/models/trained/uniNN_spiral_v1.json")
+    model.eval_mode()
+
+    // Generate a large batch of random points
+    import random
+    random.seed(99)
+    numPoints = 1000
+    batchSize = 250
+
+    allPoints = Tensor([numPoints, 2])
+    for i in range(numPoints):
+        allPoints.data[i * 2 + 0] = random.uniform(-5, 5)
+        allPoints.data[i * 2 + 1] = random.uniform(-5, 5)
+
+    // Split into batches
+    batches = []
+    for start in range(0, numPoints, batchSize):
+        end = min(start + batchSize, numPoints)
+        batch = Tensor([end - start, 2])
+        for i in range(end - start):
+            batch.data[i * 2 + 0] = allPoints.data[(start + i) * 2 + 0]
+            batch.data[i * 2 + 1] = allPoints.data[(start + i) * 2 + 1]
+        batches.append(batch)
+
+    // Sequential inference (baseline)
+    startTime = time.time()
+    seqResults = []
+    for batch in batches:
+        result = model.forward(batch)
+        seqResults.append(result)
+    seqTime = (time.time() - startTime) * 1000
+
+    // Parallel inference using Java ExecutorService
+    startTime = time.time()
+    parResults = [None] * len(batches)
+
+    ExecutorService executor = Executors.newFixedThreadPool(4);
+    import java.util.concurrent.CountDownLatch
+    CountDownLatch latch = new CountDownLatch(len(batches));
+
+    for (int idx = 0; idx < len(batches); idx++) {
+        final int batchIdx = idx;
+        executor.submit(() -> {
+            try {
+                parResults[batchIdx] = model.forward(batches[batchIdx])
+            } finally {
+                latch.countDown()
+            }
+        })
+    }
+    latch.await()
+    executor.shutdown()
+    parTime = (time.time() - startTime) * 1000
+
+    print(f"  Batch size:       {batchSize}")
+    print(f"  Total points:     {numPoints}")
+    print(f"  Number of batches: {len(batches)}")
+    print(f"  Threads:          4")
+    print(f"")
+    print(f"  Sequential time:  {seqTime:.1f} ms")
+    print(f"  Parallel time:    {parTime:.1f} ms")
+    print(f"  Speedup:          {seqTime / max(parTime, 0.1):.2f}x")
+
+    // Count predictions per class
+    classCounts = [0, 0, 0, 0]
+    for result in seqResults:
+        for i in range(result.shape[0]):
+            predClass = 0
+            predMax = result.data[i * 4]
+            for c in range(1, 4):
+                if result.data[i * 4 + c] > predMax:
+                    predMax = result.data[i * 4 + c]
+                    predClass = c
+            classCounts[predClass] += 1
+
+    print(f"\n  Prediction distribution:")
+    classNames = ["Spiral A", "Spiral B", "Spiral C", "Spiral D"]
+    for i in range(4):
+        bar = "█" * (classCounts[i] // 10)
+        print(f"    {classNames[i]}: {classCounts[i]:4d} {bar}")
+    print()
+
+// ═══════════════════════════════════════════════════════════════════
+// Example 3: Ensemble Inference — Multiple Models, Parallel
+// ═══════════════════════════════════════════════════════════════════
+
+def ensemble_inference():
+    print("═══════════════════════════════════════════════════════════")
+    print("  Example 3: Ensemble Inference (Parallel Models)")
+    print("═══════════════════════════════════════════════════════════\n")
+
+    // Load multiple models (in practice, these would be different checkpoints
+    // or models trained with different hyperparameters)
+    model1 = UniNN.load("examples/ml-framework/models/trained/uniNN_spiral_v1.json")
+    model2 = UniNN.load("examples/ml-framework/models/trained/uniNN_spiral_v1.json")
+    model3 = UniNN.load("examples/ml-framework/models/trained/uniNN_spiral_v1.json")
+
+    model1.eval_mode()
+    model2.eval_mode()
+    model3.eval_mode()
+
+    // Create ensemble with weighted averaging
+    // In real usage, weights would be tuned based on validation performance
+    ensemble = ParallelEnsemble(
+        models=[model1, model2, model3],
+        strategy="weighted"
+    )
+    ensemble.weights = [0.5, 0.3, 0.2]
+
+    // Test input
+    input = Tensor.from_list([[2.0, 1.5]], shape=[1, 2])
+
+    startTime = time.time()
+    result = ensemble.predict(input)
+    ensembleTime = (time.time() - startTime) * 1000
+
+    probs = [round(result.data[i], 4) for i in range(4)]
+    print(f"  Input: (2.0, 1.5)")
+    print(f"  Ensemble weights: {ensemble.weights}")
+    print(f"  Prediction probabilities: {probs}")
+    print(f"  Predicted class: Spiral {chr(65 + probs.index(max(probs)))}")
+    print(f"  Inference time: {ensembleTime:.1f} ms")
+    print(f"  (3 models ran in parallel via Java threads)\n")
+
+// ═══════════════════════════════════════════════════════════════════
+// Example 4: Regression Inference
+// ═══════════════════════════════════════════════════════════════════
+
+def regression_inference():
+    print("═══════════════════════════════════════════════════════════")
+    print("  Example 4: Regression Model Inference")
+    print("═══════════════════════════════════════════════════════════\n")
+
+    model = UniNN.load("examples/ml-framework/models/trained/uniNN_regression_v1.json")
+    model.eval_mode()
+
+    import math
+
+    testInputs = [
+        [0.0, 0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.5, -0.5],
+        [0.0, 1.57, 1.0, 0.0],
+        [-1.0, -1.0, 0.0, 0.0],
+        [2.0, 2.0, 1.0, -1.0],
+    ]
+
+    print(f"  {'Input':<35} {'Predicted':<12} {'Actual':<12} {'Error'}")
+    print(f"  {'─'*70}")
+
+    for inp in testInputs:
+        x1, x2, x3, x4 = inp
+        actual = math.sin(x1) * math.cos(x2) + x1 * x2 / 10.0 + x3 * 0.3 - x4 * 0.1
+
+        input = Tensor.from_list([inp], shape=[1, 4])
+        output = model.forward(input)
+        predicted = output.data[0]
+        error = abs(predicted - actual)
+
+        print(f"  [{x1:5.1f}, {x2:5.1f}, {x3:5.1f}, {x4:5.1f}]   "
+              f"{predicted:10.4f}   "
+              f"{actual:10.4f}   "
+              f"{error:.4f}")
+
+    print()
+
+// ═══════════════════════════════════════════════════════════════════
+// Run All Examples
+// ═══════════════════════════════════════════════════════════════════
+
+if __name__ == "__main__":
+    print("╔══════════════════════════════════════════════════════════╗")
+    print("║     UniNN Inference Examples — UniLang ML Framework     ║")
+    print("╚══════════════════════════════════════════════════════════╝\n")
+
+    single_model_inference()
+    batch_inference_threaded()
+    ensemble_inference()
+    regression_inference()
+
+    print("╔══════════════════════════════════════════════════════════╗")
+    print("║  All examples complete.                                  ║")
+    print("║                                                          ║")
+    print("║  Key takeaways:                                          ║")
+    print("║   • Model loads from a single JSON file                  ║")
+    print("║   • Inference requires zero external dependencies        ║")
+    print("║   • Java thread pool enables parallel batch processing   ║")
+    print("║   • Ensemble combines multiple models in parallel        ║")
+    print("║   • Same UniNN architecture handles classification       ║")
+    print("║     and regression tasks                                 ║")
+    print("╚══════════════════════════════════════════════════════════╝")

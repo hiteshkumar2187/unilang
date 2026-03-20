@@ -1,0 +1,239 @@
+// book.uniL — Book entity model
+// Demonstrates Java-style entity with Python-style utility methods
+
+import java.time.LocalDate
+import java.util.UUID
+from enum import Enum
+
+// ─── Enums (Python-style) ──────────────────────────────────
+
+class BookCategory(Enum):
+    FICTION = "Fiction"
+    NON_FICTION = "Non-Fiction"
+    SCIENCE = "Science"
+    TECHNOLOGY = "Technology"
+    HISTORY = "History"
+    BIOGRAPHY = "Biography"
+    SELF_HELP = "Self-Help"
+    CHILDREN = "Children"
+    MYSTERY = "Mystery"
+    ROMANCE = "Romance"
+    FANTASY = "Fantasy"
+    PHILOSOPHY = "Philosophy"
+    ARTS = "Arts"
+    COOKING = "Cooking"
+    TRAVEL = "Travel"
+
+class PredictionTag(Enum):
+    MOST_LIKELY_BOOKED = "most_likely_booked"
+    LATE_RETURN = "late_return"
+    ON_TIME_RETURN = "on_time_return"
+    LESS_LIKELY_BOOKED = "less_likely_booked"
+
+class BookStatus(Enum):
+    AVAILABLE = "available"
+    CHECKED_OUT = "checked_out"
+    RESERVED = "reserved"
+    LOST = "lost"
+    MAINTENANCE = "maintenance"
+
+// ─── Book Entity (Java-style with Python methods) ──────────
+
+public class Book {
+    private String id
+    private String title
+    private String author
+    private String isbn
+    private String publisher
+    private int publishYear
+    private BookCategory category
+    private int totalCopies
+    private int availableCopies
+    private BookStatus status
+    private double averageRating
+    private int totalRatings
+    private int totalCheckouts
+    private int lateReturns
+    private int onTimeReturns
+    private PredictionTag predictionTag
+    private LocalDate addedDate
+    private String description
+    private int pageCount
+    private String language
+
+    public Book(String title, String author, String isbn, BookCategory category) {
+        this.id = UUID.randomUUID().toString()
+        this.title = title
+        this.author = author
+        this.isbn = isbn
+        this.category = category
+        this.totalCopies = 1
+        this.availableCopies = 1
+        this.status = BookStatus.AVAILABLE
+        this.averageRating = 0.0
+        this.totalRatings = 0
+        this.totalCheckouts = 0
+        this.lateReturns = 0
+        this.onTimeReturns = 0
+        this.predictionTag = PredictionTag.LESS_LIKELY_BOOKED
+        this.addedDate = LocalDate.now()
+        this.language = "English"
+    }
+
+    // Python-style utility methods
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "author": self.author,
+            "isbn": self.isbn,
+            "publisher": self.publisher,
+            "publishYear": self.publishYear,
+            "category": self.category.value,
+            "totalCopies": self.totalCopies,
+            "availableCopies": self.availableCopies,
+            "status": self.status.value,
+            "averageRating": round(self.averageRating, 2),
+            "totalRatings": self.totalRatings,
+            "totalCheckouts": self.totalCheckouts,
+            "lateReturns": self.lateReturns,
+            "onTimeReturns": self.onTimeReturns,
+            "predictionTag": self.predictionTag.value if self.predictionTag else None,
+            "addedDate": str(self.addedDate),
+            "description": self.description,
+            "pageCount": self.pageCount,
+            "language": self.language,
+            "lateReturnRate": self.get_late_return_rate()
+        }
+
+    def get_late_return_rate(self) -> float:
+        total_returns = self.lateReturns + self.onTimeReturns
+        if total_returns == 0:
+            return 0.0
+        return round(self.lateReturns / total_returns, 4)
+
+    def get_popularity_score(self) -> float:
+        """Composite score based on checkouts, rating, and availability."""
+        rating_weight = self.averageRating * 0.3
+        checkout_weight = min(self.totalCheckouts / 100.0, 1.0) * 0.5
+        review_weight = min(self.totalRatings / 50.0, 1.0) * 0.2
+        return round(rating_weight + checkout_weight + review_weight, 4)
+
+    // Java-style getters
+    public String getId() { return this.id; }
+    public String getTitle() { return this.title; }
+    public String getAuthor() { return this.author; }
+    public BookCategory getCategory() { return this.category; }
+    public BookStatus getStatus() { return this.status; }
+    public PredictionTag getPredictionTag() { return this.predictionTag; }
+    public double getAverageRating() { return this.averageRating; }
+
+    public void setPredictionTag(PredictionTag tag) {
+        this.predictionTag = tag
+    }
+
+    public void checkout() {
+        if (this.availableCopies > 0) {
+            this.availableCopies -= 1
+            this.totalCheckouts += 1
+            if (this.availableCopies == 0) {
+                this.status = BookStatus.CHECKED_OUT
+            }
+        }
+    }
+
+    public void returnBook(boolean isLate) {
+        this.availableCopies = Math.min(this.availableCopies + 1, this.totalCopies)
+        if isLate:
+            self.lateReturns += 1
+        else:
+            self.onTimeReturns += 1
+        if (this.availableCopies > 0) {
+            this.status = BookStatus.AVAILABLE
+        }
+    }
+
+    public void addRating(double rating) {
+        double totalScore = this.averageRating * this.totalRatings + rating
+        this.totalRatings += 1
+        this.averageRating = totalScore / this.totalRatings
+    }
+}
+
+// ─── Review Model ──────────────────────────────────────────
+
+public class Review {
+    private String id
+    private String bookId
+    private String userId
+    private String userName
+    private double rating
+    private String comment
+    private LocalDate reviewDate
+
+    public Review(String bookId, String userId, String userName, double rating, String comment) {
+        this.id = UUID.randomUUID().toString()
+        this.bookId = bookId
+        this.userId = userId
+        this.userName = userName
+        this.rating = rating
+        this.comment = comment
+        this.reviewDate = LocalDate.now()
+    }
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "bookId": self.bookId,
+            "userId": self.userId,
+            "userName": self.userName,
+            "rating": self.rating,
+            "comment": self.comment,
+            "reviewDate": str(self.reviewDate)
+        }
+}
+
+// ─── Checkout Ticket Model ─────────────────────────────────
+
+public class CheckoutTicket {
+    private String id
+    private String bookId
+    private String userId
+    private String userName
+    private LocalDate checkoutDate
+    private LocalDate dueDate
+    private LocalDate returnDate
+    private boolean isLate
+    private String status  // "active", "returned", "overdue"
+
+    public CheckoutTicket(String bookId, String userId, String userName, int loanDays) {
+        this.id = UUID.randomUUID().toString()
+        this.bookId = bookId
+        this.userId = userId
+        this.userName = userName
+        this.checkoutDate = LocalDate.now()
+        this.dueDate = LocalDate.now().plusDays(loanDays)
+        this.returnDate = null
+        this.isLate = false
+        this.status = "active"
+    }
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "bookId": self.bookId,
+            "userId": self.userId,
+            "userName": self.userName,
+            "checkoutDate": str(self.checkoutDate),
+            "dueDate": str(self.dueDate),
+            "returnDate": str(self.returnDate) if self.returnDate else None,
+            "isLate": self.isLate,
+            "status": self.status
+        }
+
+    public void markReturned(LocalDate returnDate) {
+        this.returnDate = returnDate
+        this.isLate = returnDate.isAfter(this.dueDate)
+        this.status = "returned"
+    }
+}

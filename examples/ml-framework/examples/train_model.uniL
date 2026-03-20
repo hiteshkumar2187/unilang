@@ -1,0 +1,361 @@
+// train_model.uniL — Train UniNN from Scratch
+// Complete example: data generation → model creation → training → evaluation → save
+//
+// Demonstrates:
+//   - Custom tensor operations
+//   - Building a neural network from custom neurons
+//   - Training with Adam optimizer
+//   - Multi-class classification on synthetic dataset
+//   - Model serialization for publishing
+//
+// Licensed under Apache License 2.0
+
+from core.tensor import Tensor
+from core.loss import CrossEntropyLoss, MSELoss
+from core.optimizers import Adam, SGD, CosineAnnealingScheduler
+from models.uniNN import UniNN
+import random
+import math
+import time
+
+// ═══════════════════════════════════════════════════════════════════
+// Step 1: Generate Synthetic Dataset
+// ═══════════════════════════════════════════════════════════════════
+// We create a non-trivial classification problem:
+// 4 classes arranged in concentric rings + noise
+
+def generate_spiral_dataset(int samplesPerClass = 200, int numClasses = 4,
+                            double noise = 0.3) -> tuple:
+    """Generate spiral dataset — a classic non-linear classification problem.
+    Each class forms a spiral arm. Linear models cannot solve this.
+    """
+    totalSamples = samplesPerClass * numClasses
+    numFeatures = 2
+    X = Tensor([totalSamples, numFeatures])
+    y = Tensor([totalSamples, numClasses])  // One-hot encoded
+
+    idx = 0
+    for classIdx in range(numClasses):
+        for i in range(samplesPerClass):
+            // Parametric spiral: r increases, θ rotates
+            t = float(i) / samplesPerClass
+            r = t * 5.0  // Radius grows with t
+            theta = classIdx * (2 * math.pi / numClasses) + t * 4.0  // Each class offset by angle
+
+            // Convert to cartesian + add noise
+            x1 = r * math.cos(theta) + random.gauss(0, noise)
+            x2 = r * math.sin(theta) + random.gauss(0, noise)
+
+            X.data[idx * numFeatures + 0] = x1
+            X.data[idx * numFeatures + 1] = x2
+
+            // One-hot encode target
+            y.data[idx * numClasses + classIdx] = 1.0
+
+            idx += 1
+
+    print(f"Generated spiral dataset: {totalSamples} samples, {numClasses} classes, {numFeatures} features")
+    return (X, y)
+
+def generate_regression_dataset(int numSamples = 500) -> tuple:
+    """Generate non-linear regression dataset.
+    y = sin(x1) * cos(x2) + x1*x2/10 + noise
+    """
+    numFeatures = 4
+    X = Tensor([numSamples, numFeatures])
+    y = Tensor([numSamples, 1])
+
+    for i in range(numSamples):
+        x1 = random.uniform(-3, 3)
+        x2 = random.uniform(-3, 3)
+        x3 = random.uniform(-3, 3)
+        x4 = random.uniform(-3, 3)
+
+        target = math.sin(x1) * math.cos(x2) + x1 * x2 / 10.0 + x3 * 0.3 - x4 * 0.1
+        target += random.gauss(0, 0.1)  // Noise
+
+        X.data[i * numFeatures + 0] = x1
+        X.data[i * numFeatures + 1] = x2
+        X.data[i * numFeatures + 2] = x3
+        X.data[i * numFeatures + 3] = x4
+        y.data[i] = target
+
+    print(f"Generated regression dataset: {numSamples} samples, {numFeatures} features")
+    return (X, y)
+
+def train_test_split(Tensor X, Tensor y, double testRatio = 0.2) -> tuple:
+    """Split dataset into train and test sets."""
+    n = X.shape[0]
+    numFeatures = X.shape[1]
+    yCols = y.shape[1] if len(y.shape) == 2 else 1
+    yIs2d = len(y.shape) == 2
+
+    // Shuffle indices
+    indices = list(range(n))
+    random.shuffle(indices)
+
+    splitIdx = int(n * (1 - testRatio))
+
+    trainX = Tensor([splitIdx, numFeatures])
+    testX = Tensor([n - splitIdx, numFeatures])
+    if yIs2d:
+        trainY = Tensor([splitIdx, yCols])
+        testY = Tensor([n - splitIdx, yCols])
+    else:
+        trainY = Tensor([splitIdx, 1])
+        testY = Tensor([n - splitIdx, 1])
+
+    for i in range(splitIdx):
+        old = indices[i]
+        for j in range(numFeatures):
+            trainX.data[i * numFeatures + j] = X.data[old * numFeatures + j]
+        if yIs2d:
+            for j in range(yCols):
+                trainY.data[i * yCols + j] = y.data[old * yCols + j]
+        else:
+            trainY.data[i] = y.data[old]
+
+    for i in range(n - splitIdx):
+        old = indices[splitIdx + i]
+        for j in range(numFeatures):
+            testX.data[i * numFeatures + j] = X.data[old * numFeatures + j]
+        if yIs2d:
+            for j in range(yCols):
+                testY.data[i * yCols + j] = y.data[old * yCols + j]
+        else:
+            testY.data[i] = y.data[old]
+
+    print(f"Split: {splitIdx} train, {n - splitIdx} test")
+    return (trainX, trainY, testX, testY)
+
+// ═══════════════════════════════════════════════════════════════════
+// Step 2: Normalize Features
+// ═══════════════════════════════════════════════════════════════════
+
+def normalize(Tensor X) -> tuple:
+    """Z-score normalization. Returns (normalized_X, means, stds)."""
+    n = X.shape[0]
+    features = X.shape[1]
+
+    means = [0.0] * features
+    stds = [0.0] * features
+
+    // Compute means
+    for j in range(features):
+        s = 0.0
+        for i in range(n):
+            s += X.data[i * features + j]
+        means[j] = s / n
+
+    // Compute stds
+    for j in range(features):
+        s = 0.0
+        for i in range(n):
+            diff = X.data[i * features + j] - means[j]
+            s += diff * diff
+        stds[j] = math.sqrt(s / n) + 1e-8
+
+    // Normalize
+    Xnorm = Tensor(X.shape[:])
+    for i in range(n):
+        for j in range(features):
+            Xnorm.data[i * features + j] = (X.data[i * features + j] - means[j]) / stds[j]
+
+    return (Xnorm, means, stds)
+
+// ═══════════════════════════════════════════════════════════════════
+// Step 3: Main Training Script
+// ═══════════════════════════════════════════════════════════════════
+
+if __name__ == "__main__":
+
+    print("╔══════════════════════════════════════════════════════════╗")
+    print("║       UniNN Training — UniLang ML Framework             ║")
+    print("║       Building a Neural Network from Scratch            ║")
+    print("╚══════════════════════════════════════════════════════════╝")
+
+    // ── Classification Task ──────────────────────────────────
+
+    print("\n▸ Task 1: Multi-class Classification (Spiral Dataset)\n")
+
+    // Generate data
+    random.seed(42)
+    X, y = generate_spiral_dataset(samplesPerClass=250, numClasses=4, noise=0.25)
+
+    // Split
+    trainX, trainY, testX, testY = train_test_split(X, y, testRatio=0.2)
+
+    // Normalize
+    trainX, means, stds = normalize(trainX)
+    // Apply same normalization to test set
+    for i in range(testX.shape[0]):
+        for j in range(testX.shape[1]):
+            testX.data[i * testX.shape[1] + j] = \
+                (testX.data[i * testX.shape[1] + j] - means[j]) / stds[j]
+
+    // Create model
+    model = UniNN(
+        inputDim=2,          // 2D spiral coordinates
+        hiddenDim=64,        // Hidden layer width
+        outputDim=4,         // 4 spiral classes
+        numBlocks=3,         // 3 gated residual blocks
+        dropoutRate=0.1,
+        task="classification"
+    )
+    model.summary()
+
+    // Setup training
+    loss_fn = CrossEntropyLoss()
+    optimizer = Adam(model.parameters(), lr=0.005, beta1=0.9, beta2=0.999, weightDecay=1e-4)
+    scheduler = CosineAnnealingScheduler(optimizer, totalSteps=100, minLR=1e-5)
+
+    // Training loop
+    print("Training...")
+    startTime = time.time()
+    numEpochs = 100
+    batchSize = 32
+
+    for epoch in range(1, numEpochs + 1):
+        model.train_mode()
+        epochLoss = 0.0
+        numBatches = 0
+
+        // Mini-batch training
+        indices = list(range(trainX.shape[0]))
+        random.shuffle(indices)
+
+        for batchStart in range(0, len(indices), batchSize):
+            batchEnd = min(batchStart + batchSize, len(indices))
+            batchIndices = indices[batchStart:batchEnd]
+            actualBatch = len(batchIndices)
+
+            // Extract batch
+            bX = Tensor([actualBatch, trainX.shape[1]])
+            bY = Tensor([actualBatch, trainY.shape[1]])
+            for i, idx in enumerate(batchIndices):
+                for j in range(trainX.shape[1]):
+                    bX.data[i * trainX.shape[1] + j] = trainX.data[idx * trainX.shape[1] + j]
+                for j in range(trainY.shape[1]):
+                    bY.data[i * trainY.shape[1] + j] = trainY.data[idx * trainY.shape[1] + j]
+
+            // Forward
+            model.zero_grad()
+            predictions = model.forward(bX)
+            loss = loss_fn.compute(predictions, bY)
+            epochLoss += loss.data[0]
+            numBatches += 1
+
+            // Backward
+            loss.backward()
+
+            // Update
+            optimizer.step()
+
+        scheduler.step()
+
+        // Print progress
+        if epoch % 10 == 0 or epoch == 1:
+            avgLoss = epochLoss / numBatches
+
+            // Evaluate on test set
+            model.eval_mode()
+            testPred = model.forward(testX)
+            testLoss = loss_fn.compute(testPred, testY)
+
+            // Compute accuracy
+            correct = 0
+            total = testX.shape[0]
+            numClasses = testY.shape[1]
+            for i in range(total):
+                predClass = 0
+                predMax = testPred.data[i * numClasses]
+                trueClass = 0
+                trueMax = testY.data[i * numClasses]
+                for c in range(1, numClasses):
+                    if testPred.data[i * numClasses + c] > predMax:
+                        predMax = testPred.data[i * numClasses + c]
+                        predClass = c
+                    if testY.data[i * numClasses + c] > trueMax:
+                        trueMax = testY.data[i * numClasses + c]
+                        trueClass = c
+                if predClass == trueClass:
+                    correct += 1
+            accuracy = correct / total
+
+            elapsed = time.time() - startTime
+            print(f"  Epoch {epoch:3d}/{numEpochs} | "
+                  f"Loss: {avgLoss:.4f} | "
+                  f"Val Loss: {testLoss.data[0]:.4f} | "
+                  f"Val Acc: {accuracy:.4f} | "
+                  f"Time: {elapsed:.1f}s")
+
+    totalTime = time.time() - startTime
+    print(f"\n  Training complete in {totalTime:.1f}s")
+
+    // ── Save Model ───────────────────────────────────────────
+
+    modelPath = "examples/ml-framework/models/trained/uniNN_spiral_v1.json"
+    model.save(modelPath)
+    print(f"\n  Model published to: {modelPath}")
+
+    // ── Regression Task ──────────────────────────────────────
+
+    print("\n\n▸ Task 2: Non-linear Regression\n")
+
+    random.seed(123)
+    Xr, yr = generate_regression_dataset(numSamples=800)
+    trainXr, trainYr, testXr, testYr = train_test_split(Xr, yr, testRatio=0.2)
+    trainXr, means_r, stds_r = normalize(trainXr)
+    for i in range(testXr.shape[0]):
+        for j in range(testXr.shape[1]):
+            testXr.data[i * testXr.shape[1] + j] = \
+                (testXr.data[i * testXr.shape[1] + j] - means_r[j]) / stds_r[j]
+
+    regModel = UniNN(
+        inputDim=4,
+        hiddenDim=32,
+        outputDim=1,
+        numBlocks=2,
+        dropoutRate=0.05,
+        task="regression"
+    )
+    regModel.summary()
+
+    mse_loss = MSELoss()
+    reg_optimizer = Adam(regModel.parameters(), lr=0.005, weightDecay=1e-4)
+
+    print("Training regression model...")
+    for epoch in range(1, 81):
+        regModel.train_mode()
+        regModel.zero_grad()
+        pred = regModel.forward(trainXr)
+        loss = mse_loss.compute(pred, trainYr)
+        loss.backward()
+        reg_optimizer.step()
+
+        if epoch % 20 == 0 or epoch == 1:
+            regModel.eval_mode()
+            testPred = regModel.forward(testXr)
+            testLoss = mse_loss.compute(testPred, testYr)
+            print(f"  Epoch {epoch:3d}/80 | Train MSE: {loss.data[0]:.6f} | Val MSE: {testLoss.data[0]:.6f}")
+
+    regModelPath = "examples/ml-framework/models/trained/uniNN_regression_v1.json"
+    regModel.save(regModelPath)
+
+    // ── Summary ──────────────────────────────────────────────
+
+    print("\n╔══════════════════════════════════════════════════════════╗")
+    print("║  Training Complete                                       ║")
+    print("╠══════════════════════════════════════════════════════════╣")
+    print(f"║  Classification model: {modelPath:<34s}║")
+    print(f"║  Regression model:     {regModelPath:<34s}║")
+    print("║                                                          ║")
+    print("║  Both models built entirely from scratch:                 ║")
+    print("║    ✓ Custom Tensor with autograd                         ║")
+    print("║    ✓ Custom neurons and layers                           ║")
+    print("║    ✓ Gated residual blocks                               ║")
+    print("║    ✓ Multi-scale feature mixing                          ║")
+    print("║    ✓ Adam optimizer with weight decay                    ║")
+    print("║    ✓ Cosine annealing LR schedule                       ║")
+    print("║    ✓ No external ML libraries used                       ║")
+    print("╚══════════════════════════════════════════════════════════╝")

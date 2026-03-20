@@ -1,0 +1,295 @@
+// layers.uniL — Neural Network Layer Primitives
+// Custom neurons and layers — built from scratch
+//
+// Licensed under Apache License 2.0
+
+from core.tensor import Tensor
+import math
+import random
+
+// ═══════════════════════════════════════════════════════════════════
+// Base Layer Interface
+// ═══════════════════════════════════════════════════════════════════
+
+public interface Layer {
+    Tensor forward(Tensor input);
+    list parameters();
+    String name();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Linear (Dense / Fully Connected) Layer
+// ═══════════════════════════════════════════════════════════════════
+// Each neuron: output = activation(Σ(weight_i × input_i) + bias)
+
+public class Linear implements Layer {
+    private Tensor weights    // Shape: [in_features, out_features]
+    private Tensor bias       // Shape: [1, out_features]
+    private int inFeatures
+    private int outFeatures
+    private String layerName
+
+    public Linear(int inFeatures, int outFeatures, String name = "linear") {
+        this.inFeatures = inFeatures
+        this.outFeatures = outFeatures
+        this.layerName = name
+
+        // He initialization (good for ReLU networks)
+        this.weights = Tensor.he_normal(inFeatures, outFeatures, requiresGrad=true)
+        this.weights.name = f"{name}.weight"
+
+        // Zero-initialize bias
+        this.bias = Tensor.zeros([1, outFeatures], requiresGrad=true)
+        this.bias.name = f"{name}.bias"
+    }
+
+    public Tensor forward(Tensor input) {
+        // input: (batch_size, in_features)
+        // output: (batch_size, out_features) = input @ weights + bias
+        Tensor out = input.matmul(this.weights)
+        out = out.add(this.bias)
+        return out
+    }
+
+    public list parameters():
+        return [self.weights, self.bias]
+
+    public String name():
+        return f"Linear({self.inFeatures} → {self.outFeatures})"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Activation Layers
+// ═══════════════════════════════════════════════════════════════════
+
+public class ReLU implements Layer {
+    public Tensor forward(Tensor input) {
+        return input.relu()
+    }
+    public list parameters():
+        return []
+    public String name():
+        return "ReLU"
+}
+
+public class Sigmoid implements Layer {
+    public Tensor forward(Tensor input) {
+        return input.sigmoid()
+    }
+    public list parameters():
+        return []
+    public String name():
+        return "Sigmoid"
+}
+
+public class Tanh implements Layer {
+    public Tensor forward(Tensor input) {
+        return input.tanh()
+    }
+    public list parameters():
+        return []
+    public String name():
+        return "Tanh"
+}
+
+public class LeakyReLU implements Layer {
+    private double alpha
+
+    public LeakyReLU(double alpha = 0.01) {
+        this.alpha = alpha
+    }
+
+    public Tensor forward(Tensor input) {
+        return input.leaky_relu(this.alpha)
+    }
+    public list parameters():
+        return []
+    public String name():
+        return f"LeakyReLU(α={self.alpha})"
+}
+
+public class Softmax implements Layer {
+    public Tensor forward(Tensor input) {
+        return input.softmax()
+    }
+    public list parameters():
+        return []
+    public String name():
+        return "Softmax"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Dropout Layer — Regularization
+// ═══════════════════════════════════════════════════════════════════
+
+public class Dropout implements Layer {
+    private double rate
+    private boolean training
+
+    public Dropout(double rate = 0.5) {
+        this.rate = rate
+        this.training = true
+    }
+
+    public Tensor forward(Tensor input) {
+        if not self.training:
+            return input
+
+        // Create mask: each neuron has `rate` probability of being zeroed
+        mask = Tensor(input.shape[:])
+        scale = 1.0 / (1.0 - self.rate)  // Inverted dropout scaling
+
+        for i in range(input.size):
+            if random.random() > self.rate:
+                mask.data[i] = scale
+            else:
+                mask.data[i] = 0.0
+
+        return input.mul(mask)
+    }
+
+    def set_training(self, boolean mode):
+        self.training = mode
+
+    public list parameters():
+        return []
+    public String name():
+        return f"Dropout(p={self.rate})"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Batch Normalization Layer
+// ═══════════════════════════════════════════════════════════════════
+
+public class BatchNorm implements Layer {
+    private int numFeatures
+    private Tensor gamma       // Learnable scale
+    private Tensor beta        // Learnable shift
+    private Tensor runningMean // Running statistics
+    private Tensor runningVar
+    private double epsilon
+    private double momentum
+    private boolean training
+
+    public BatchNorm(int numFeatures, double epsilon = 1e-5, double momentum = 0.1) {
+        this.numFeatures = numFeatures
+        this.epsilon = epsilon
+        this.momentum = momentum
+        this.training = true
+
+        this.gamma = Tensor.ones([1, numFeatures], requiresGrad=true)
+        this.beta = Tensor.zeros([1, numFeatures], requiresGrad=true)
+        this.runningMean = Tensor.zeros([1, numFeatures])
+        this.runningVar = Tensor.ones([1, numFeatures])
+    }
+
+    public Tensor forward(Tensor input) {
+        // input: (batch_size, num_features)
+        int batchSize = input.shape[0]
+        int features = input.shape[1]
+
+        if self.training {
+            // Compute batch mean and variance
+            Tensor mean = Tensor.zeros([1, features])
+            Tensor variance = Tensor.zeros([1, features])
+
+            for (int f = 0; f < features; f++) {
+                double sum = 0.0;
+                for (int b = 0; b < batchSize; b++) {
+                    sum += input.data[b * features + f];
+                }
+                mean.data[f] = sum / batchSize;
+
+                double varSum = 0.0;
+                for (int b = 0; b < batchSize; b++) {
+                    double diff = input.data[b * features + f] - mean.data[f];
+                    varSum += diff * diff;
+                }
+                variance.data[f] = varSum / batchSize;
+            }
+
+            // Update running statistics
+            for (int f = 0; f < features; f++) {
+                this.runningMean.data[f] = (1 - this.momentum) * this.runningMean.data[f]
+                                           + this.momentum * mean.data[f];
+                this.runningVar.data[f] = (1 - this.momentum) * this.runningVar.data[f]
+                                          + this.momentum * variance.data[f];
+            }
+
+            // Normalize: (x - mean) / sqrt(var + eps)
+            Tensor normalized = Tensor(input.shape[:], requiresGrad=input.requiresGrad)
+            for (int b = 0; b < batchSize; b++) {
+                for (int f = 0; f < features; f++) {
+                    int idx = b * features + f;
+                    normalized.data[idx] = (input.data[idx] - mean.data[f])
+                                           / Math.sqrt(variance.data[f] + this.epsilon);
+                }
+            }
+
+            // Scale and shift: gamma * normalized + beta
+            return normalized.mul(this.gamma).add(this.beta)
+        } else {
+            // Use running statistics during inference
+            Tensor normalized = Tensor(input.shape[:], requiresGrad=input.requiresGrad)
+            for (int b = 0; b < batchSize; b++) {
+                for (int f = 0; f < features; f++) {
+                    int idx = b * features + f;
+                    normalized.data[idx] = (input.data[idx] - this.runningMean.data[f])
+                                           / Math.sqrt(this.runningVar.data[f] + this.epsilon);
+                }
+            }
+            return normalized.mul(this.gamma).add(this.beta)
+        }
+    }
+
+    def set_training(self, boolean mode):
+        self.training = mode
+
+    public list parameters():
+        return [self.gamma, self.beta]
+
+    public String name():
+        return f"BatchNorm({self.numFeatures})"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Embedding Layer — For NLP/sequence models
+// ═══════════════════════════════════════════════════════════════════
+
+public class Embedding implements Layer {
+    private int vocabSize
+    private int embeddingDim
+    private Tensor weights
+
+    public Embedding(int vocabSize, int embeddingDim) {
+        this.vocabSize = vocabSize
+        this.embeddingDim = embeddingDim
+        // Initialize with random normal
+        this.weights = Tensor.randn([vocabSize, embeddingDim], requiresGrad=true)
+        this.weights.name = "embedding.weight"
+    }
+
+    public Tensor forward(Tensor indices) {
+        """Look up embeddings for given integer indices.
+        indices: (batch_size, seq_len) of integer token IDs
+        output: (batch_size * seq_len, embedding_dim)
+        """
+        int numTokens = indices.size
+        result = Tensor([numTokens, self.embeddingDim], requiresGrad=true)
+
+        for i in range(numTokens):
+            int tokenId = int(indices.data[i])
+            if tokenId >= 0 and tokenId < self.vocabSize:
+                for j in range(self.embeddingDim):
+                    result.data[i * self.embeddingDim + j] = \
+                        self.weights.data[tokenId * self.embeddingDim + j]
+
+        return result
+    }
+
+    public list parameters():
+        return [self.weights]
+
+    public String name():
+        return f"Embedding({self.vocabSize}, {self.embeddingDim})"
+}

@@ -1,0 +1,65 @@
+{
+  "name": "unilang",
+  "displayName": "UniLang",
+  "description": "Language support for UniLang — a hybrid Python + Java programming language",
+  "version": "0.1.0",
+  "publisher": "unilang-community",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "activationEvents": [
+    "onLanguage:unilang"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "unilang",
+        "aliases": [
+          "UniLang",
+          "unilang"
+        ],
+        "extensions": [
+          ".uniL"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/unilang-light.png",
+          "dark": "./icons/unilang-dark.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "unilang",
+        "scopeName": "source.unilang",
+        "path": "./syntaxes/unilang.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "unilang",
+        "path": "./snippets/unilang.snippets.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}

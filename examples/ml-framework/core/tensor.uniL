@@ -1,0 +1,544 @@
+// tensor.uniL — Custom Tensor Implementation
+// The foundation of UniLang ML Framework
+// Java-style memory management + Python-style operator overloading
+//
+// Licensed under Apache License 2.0
+
+import java.util.Arrays
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.CountDownLatch
+import random
+import math
+
+// ═══════════════════════════════════════════════════════════════════
+// Tensor: Multi-dimensional array with automatic differentiation
+// ═══════════════════════════════════════════════════════════════════
+
+public class Tensor {
+    private double[] data          // Flat storage (row-major)
+    private double[] grad          // Gradient storage (same shape)
+    private int[] shape            // Dimension sizes
+    private int[] strides          // Strides for indexing
+    private int size               // Total number of elements
+    private boolean requiresGrad   // Track gradients?
+    private String name            // For debugging
+    private list _backward_ops     // Backward graph (list of closures)
+
+    // ── Construction ─────────────────────────────────────────
+
+    public Tensor(int[] shape, boolean requiresGrad = false, String name = "") {
+        this.shape = Arrays.copyOf(shape, shape.length)
+        this.size = 1
+        for dim in shape:
+            this.size *= dim
+
+        this.strides = _compute_strides(shape)
+        this.data = new double[this.size]
+        this.grad = new double[this.size]
+        this.requiresGrad = requiresGrad
+        this.name = name
+        this._backward_ops = []
+    }
+
+    private static int[] _compute_strides(int[] shape):
+        int[] strides = new int[shape.length]
+        stride = 1
+        for i in range(len(shape) - 1, -1, -1):
+            strides[i] = stride
+            stride *= shape[i]
+        return strides
+
+    // ── Factory Methods ──────────────────────────────────────
+
+    public static Tensor zeros(int[] shape, boolean requiresGrad = false):
+        return Tensor(shape, requiresGrad)
+
+    public static Tensor ones(int[] shape, boolean requiresGrad = false):
+        t = Tensor(shape, requiresGrad)
+        Arrays.fill(t.data, 1.0)
+        return t
+
+    public static Tensor fill(int[] shape, double value, boolean requiresGrad = false):
+        t = Tensor(shape, requiresGrad)
+        Arrays.fill(t.data, value)
+        return t
+
+    public static Tensor rand(int[] shape, boolean requiresGrad = false):
+        """Uniform random [0, 1)."""
+        t = Tensor(shape, requiresGrad)
+        for i in range(t.size):
+            t.data[i] = random.random()
+        return t
+
+    public static Tensor randn(int[] shape, boolean requiresGrad = false):
+        """Standard normal distribution N(0, 1)."""
+        t = Tensor(shape, requiresGrad)
+        for i in range(t.size):
+            t.data[i] = random.gauss(0.0, 1.0)
+        return t
+
+    public static Tensor xavier_uniform(int fan_in, int fan_out, boolean requiresGrad = true):
+        """Xavier/Glorot uniform initialization."""
+        limit = math.sqrt(6.0 / (fan_in + fan_out))
+        t = Tensor([fan_in, fan_out], requiresGrad)
+        for i in range(t.size):
+            t.data[i] = random.uniform(-limit, limit)
+        return t
+
+    public static Tensor he_normal(int fan_in, int fan_out, boolean requiresGrad = true):
+        """He/Kaiming normal initialization for ReLU networks."""
+        std = math.sqrt(2.0 / fan_in)
+        t = Tensor([fan_in, fan_out], requiresGrad)
+        for i in range(t.size):
+            t.data[i] = random.gauss(0.0, std)
+        return t
+
+    public static Tensor from_list(list data, int[] shape = None, boolean requiresGrad = false):
+        """Create tensor from Python list."""
+        flat = _flatten(data)
+        if shape is None:
+            shape = _infer_shape(data)
+        t = Tensor(shape, requiresGrad)
+        for i in range(min(len(flat), t.size)):
+            t.data[i] = float(flat[i])
+        return t
+
+    // ── Indexing ─────────────────────────────────────────────
+
+    def get(self, *indices) -> double:
+        """Get value at given indices."""
+        idx = self._flat_index(indices)
+        return self.data[idx]
+
+    def set(self, value: double, *indices):
+        """Set value at given indices."""
+        idx = self._flat_index(indices)
+        self.data[idx] = value
+
+    private int _flat_index(tuple indices):
+        idx = 0
+        for i in range(len(indices)):
+            idx += indices[i] * self.strides[i]
+        return idx
+
+    // ── Core Math Operations (with autograd) ─────────────────
+
+    def matmul(self, other) -> Tensor:
+        """Matrix multiplication: self @ other.
+        self: (M, K), other: (K, N) → result: (M, N)
+        """
+        assert len(self.shape) == 2 and len(other.shape) == 2, \
+            f"matmul requires 2D tensors, got {self.shape} and {other.shape}"
+        assert self.shape[1] == other.shape[0], \
+            f"matmul shape mismatch: {self.shape} @ {other.shape}"
+
+        M = self.shape[0]
+        K = self.shape[1]
+        N = other.shape[1]
+
+        result = Tensor([M, N], requiresGrad=(self.requiresGrad or other.requiresGrad))
+
+        // ── Tiled matrix multiply for cache efficiency ──
+        TILE = 32
+        for ii in range(0, M, TILE) {
+            for jj in range(0, N, TILE) {
+                for kk in range(0, K, TILE) {
+                    // Multiply tile
+                    int i_end = Math.min(ii + TILE, M);
+                    int j_end = Math.min(jj + TILE, N);
+                    int k_end = Math.min(kk + TILE, K);
+
+                    for (int i = ii; i < i_end; i++) {
+                        for (int k = kk; k < k_end; k++) {
+                            double a_val = self.data[i * K + k];
+                            for (int j = jj; j < j_end; j++) {
+                                result.data[i * N + j] += a_val * other.data[k * N + j];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Backward pass (autograd) ──
+        if result.requiresGrad:
+            def _backward():
+                // dL/dA = dL/dC @ B^T
+                if self.requiresGrad:
+                    for i in range(M):
+                        for k in range(K):
+                            s = 0.0
+                            for j in range(N):
+                                s += result.grad[i * N + j] * other.data[k * N + j]
+                            self.grad[i * K + k] += s
+
+                // dL/dB = A^T @ dL/dC
+                if other.requiresGrad:
+                    for k in range(K):
+                        for j in range(N):
+                            s = 0.0
+                            for i in range(M):
+                                s += self.data[i * K + k] * result.grad[i * N + j]
+                            other.grad[k * N + j] += s
+
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+            result._backward_ops.extend(other._backward_ops)
+
+        return result
+
+    def add(self, other) -> Tensor:
+        """Element-wise addition with broadcasting."""
+        result_shape = _broadcast_shape(self.shape, other.shape)
+        result = Tensor(result_shape, requiresGrad=(self.requiresGrad or other.requiresGrad))
+
+        for i in range(result.size):
+            a_idx = _broadcast_index(i, result.shape, self.shape)
+            b_idx = _broadcast_index(i, result.shape, other.shape)
+            result.data[i] = self.data[a_idx] + other.data[b_idx]
+
+        if result.requiresGrad:
+            def _backward():
+                if self.requiresGrad:
+                    _accumulate_broadcast_grad(result.grad, result.shape, self.grad, self.shape)
+                if other.requiresGrad:
+                    _accumulate_broadcast_grad(result.grad, result.shape, other.grad, other.shape)
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+            result._backward_ops.extend(other._backward_ops)
+
+        return result
+
+    def mul(self, other) -> Tensor:
+        """Element-wise multiplication."""
+        result = Tensor(self.shape[:], requiresGrad=(self.requiresGrad or other.requiresGrad))
+
+        for i in range(self.size):
+            result.data[i] = self.data[i] * other.data[i]
+
+        if result.requiresGrad:
+            def _backward():
+                if self.requiresGrad:
+                    for i in range(self.size):
+                        self.grad[i] += result.grad[i] * other.data[i]
+                if other.requiresGrad:
+                    for i in range(other.size):
+                        other.grad[i] += result.grad[i] * self.data[i]
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+            result._backward_ops.extend(other._backward_ops)
+
+        return result
+
+    def scale(self, double scalar) -> Tensor:
+        """Multiply all elements by scalar."""
+        result = Tensor(self.shape[:], requiresGrad=self.requiresGrad)
+        for i in range(self.size):
+            result.data[i] = self.data[i] * scalar
+
+        if result.requiresGrad:
+            def _backward():
+                for i in range(self.size):
+                    self.grad[i] += result.grad[i] * scalar
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    def neg(self) -> Tensor:
+        return self.scale(-1.0)
+
+    def sub(self, other) -> Tensor:
+        return self.add(other.neg())
+
+    def sum(self) -> Tensor:
+        """Sum all elements, returns scalar tensor."""
+        result = Tensor([1], requiresGrad=self.requiresGrad)
+        s = 0.0
+        for i in range(self.size):
+            s += self.data[i]
+        result.data[0] = s
+
+        if result.requiresGrad:
+            def _backward():
+                for i in range(self.size):
+                    self.grad[i] += result.grad[0]
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    def mean(self) -> Tensor:
+        """Mean of all elements."""
+        return self.sum().scale(1.0 / self.size)
+
+    def pow(self, double exponent) -> Tensor:
+        """Element-wise power."""
+        result = Tensor(self.shape[:], requiresGrad=self.requiresGrad)
+        for i in range(self.size):
+            result.data[i] = math.pow(self.data[i], exponent)
+
+        if result.requiresGrad:
+            def _backward():
+                for i in range(self.size):
+                    self.grad[i] += result.grad[i] * exponent * math.pow(self.data[i], exponent - 1)
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    def transpose(self) -> Tensor:
+        """2D matrix transpose."""
+        assert len(self.shape) == 2, "transpose requires 2D tensor"
+        rows = self.shape[0]
+        cols = self.shape[1]
+        result = Tensor([cols, rows], requiresGrad=self.requiresGrad)
+
+        for i in range(rows):
+            for j in range(cols):
+                result.data[j * rows + i] = self.data[i * cols + j]
+
+        if result.requiresGrad:
+            def _backward():
+                for i in range(rows):
+                    for j in range(cols):
+                        self.grad[i * cols + j] += result.grad[j * rows + i]
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    // ── Activation Functions (with autograd) ─────────────────
+
+    def relu(self) -> Tensor:
+        result = Tensor(self.shape[:], requiresGrad=self.requiresGrad)
+        for i in range(self.size):
+            result.data[i] = max(0.0, self.data[i])
+
+        if result.requiresGrad:
+            def _backward():
+                for i in range(self.size):
+                    self.grad[i] += result.grad[i] * (1.0 if self.data[i] > 0 else 0.0)
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    def sigmoid(self) -> Tensor:
+        result = Tensor(self.shape[:], requiresGrad=self.requiresGrad)
+        for i in range(self.size):
+            s = 1.0 / (1.0 + math.exp(-self.data[i]))
+            result.data[i] = s
+
+        if result.requiresGrad:
+            def _backward():
+                for i in range(self.size):
+                    s = result.data[i]
+                    self.grad[i] += result.grad[i] * s * (1.0 - s)
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    def tanh(self) -> Tensor:
+        result = Tensor(self.shape[:], requiresGrad=self.requiresGrad)
+        for i in range(self.size):
+            result.data[i] = math.tanh(self.data[i])
+
+        if result.requiresGrad:
+            def _backward():
+                for i in range(self.size):
+                    t = result.data[i]
+                    self.grad[i] += result.grad[i] * (1.0 - t * t)
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    def leaky_relu(self, double alpha = 0.01) -> Tensor:
+        result = Tensor(self.shape[:], requiresGrad=self.requiresGrad)
+        for i in range(self.size):
+            result.data[i] = self.data[i] if self.data[i] > 0 else alpha * self.data[i]
+
+        if result.requiresGrad:
+            def _backward():
+                for i in range(self.size):
+                    self.grad[i] += result.grad[i] * (1.0 if self.data[i] > 0 else alpha)
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    def softmax(self) -> Tensor:
+        """Row-wise softmax for 2D tensor, full softmax for 1D."""
+        if len(self.shape) == 1:
+            return self._softmax_1d()
+
+        assert len(self.shape) == 2, "softmax supports 1D or 2D tensors"
+        rows = self.shape[0]
+        cols = self.shape[1]
+        result = Tensor(self.shape[:], requiresGrad=self.requiresGrad)
+
+        for r in range(rows):
+            // Numerical stability: subtract max
+            row_max = -1e30
+            for c in range(cols):
+                val = self.data[r * cols + c]
+                if val > row_max:
+                    row_max = val
+
+            row_sum = 0.0
+            for c in range(cols):
+                exp_val = math.exp(self.data[r * cols + c] - row_max)
+                result.data[r * cols + c] = exp_val
+                row_sum += exp_val
+
+            for c in range(cols):
+                result.data[r * cols + c] /= row_sum
+
+        if result.requiresGrad:
+            def _backward():
+                for r in range(rows):
+                    for i in range(cols):
+                        si = result.data[r * cols + i]
+                        for j in range(cols):
+                            sj = result.data[r * cols + j]
+                            if i == j:
+                                self.grad[r * cols + i] += result.grad[r * cols + j] * si * (1 - si)
+                            else:
+                                self.grad[r * cols + i] += result.grad[r * cols + j] * (-si * sj)
+            result._backward_ops.append(_backward)
+            result._backward_ops.extend(self._backward_ops)
+
+        return result
+
+    def _softmax_1d(self) -> Tensor:
+        result = Tensor(self.shape[:], requiresGrad=self.requiresGrad)
+        max_val = max(self.data)
+        exp_sum = 0.0
+        for i in range(self.size):
+            result.data[i] = math.exp(self.data[i] - max_val)
+            exp_sum += result.data[i]
+        for i in range(self.size):
+            result.data[i] /= exp_sum
+        return result
+
+    // ── Backpropagation ──────────────────────────────────────
+
+    def backward(self):
+        """Run backward pass — compute gradients for all tensors in the graph."""
+        // Seed gradient: dL/dL = 1.0
+        Arrays.fill(self.grad, 1.0)
+
+        // Execute backward ops in reverse order
+        for op in reversed(self._backward_ops):
+            op()
+
+    def zero_grad(self):
+        """Reset gradients to zero."""
+        Arrays.fill(self.grad, 0.0)
+
+    // ── Utility ──────────────────────────────────────────────
+
+    def to_list(self) -> list:
+        return list(self.data)
+
+    def clone(self) -> Tensor:
+        t = Tensor(self.shape[:], self.requiresGrad)
+        System.arraycopy(self.data, 0, t.data, 0, self.size)
+        return t
+
+    def reshape(self, int[] new_shape) -> Tensor:
+        new_size = 1
+        for d in new_shape:
+            new_size *= d
+        assert new_size == self.size, f"Cannot reshape {self.shape} to {new_shape}"
+        result = Tensor(new_shape, self.requiresGrad)
+        System.arraycopy(self.data, 0, result.data, 0, self.size)
+        return result
+
+    def getShape(self) -> list:
+        return list(self.shape)
+
+    def getSize(self) -> int:
+        return self.size
+
+    def __repr__(self) -> str:
+        if self.size <= 20:
+            return f"Tensor(shape={list(self.shape)}, data={[round(x, 4) for x in self.data]})"
+        return f"Tensor(shape={list(self.shape)}, size={self.size})"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Helper functions
+// ═══════════════════════════════════════════════════════════════════
+
+def _flatten(data) -> list:
+    """Recursively flatten nested list."""
+    if not isinstance(data, (list, tuple)):
+        return [data]
+    result = []
+    for item in data:
+        result.extend(_flatten(item))
+    return result
+
+def _infer_shape(data) -> list:
+    """Infer shape from nested list."""
+    shape = []
+    current = data
+    while isinstance(current, (list, tuple)):
+        shape.append(len(current))
+        if len(current) > 0:
+            current = current[0]
+        else:
+            break
+    return shape
+
+def _broadcast_shape(shape_a, shape_b) -> list:
+    """Compute broadcast result shape."""
+    if shape_a == shape_b:
+        return list(shape_a)
+    // Simple case: one is scalar-like [1] or bias [N]
+    if len(shape_a) >= len(shape_b):
+        return list(shape_a)
+    return list(shape_b)
+
+def _broadcast_index(flat_idx, result_shape, source_shape) -> int:
+    """Map flat index from result to source, handling broadcasting."""
+    if list(result_shape) == list(source_shape):
+        return flat_idx
+
+    // Convert flat to multi-dim in result space
+    coords = []
+    remaining = flat_idx
+    for i in range(len(result_shape) - 1, -1, -1):
+        coords.insert(0, remaining % result_shape[i])
+        remaining //= result_shape[i]
+
+    // Map to source space (broadcast dimensions become 0)
+    src_idx = 0
+    src_strides = []
+    stride = 1
+    for i in range(len(source_shape) - 1, -1, -1):
+        src_strides.insert(0, stride)
+        stride *= source_shape[i]
+
+    offset = len(result_shape) - len(source_shape)
+    for i in range(len(source_shape)):
+        dim = coords[i + offset]
+        if source_shape[i] == 1:
+            dim = 0
+        src_idx += dim * src_strides[i]
+
+    return src_idx
+
+def _accumulate_broadcast_grad(result_grad, result_shape, source_grad, source_shape):
+    """Accumulate gradients with broadcast reduction."""
+    result_size = 1
+    for d in result_shape:
+        result_size *= d
+
+    for i in range(result_size):
+        src_idx = _broadcast_index(i, result_shape, source_shape)
+        source_grad[src_idx] += result_grad[i]

@@ -1,0 +1,297 @@
+// prediction_engine.uniL — ML Prediction Engine
+// Predicts book tags: most_likely_booked, late_return, on_time_return, less_likely_booked
+// Demonstrates Python ML with Java threading for batch prediction
+
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+import joblib
+import json
+import java.util.concurrent.Executors
+import java.util.concurrent.CompletableFuture
+
+// ─── Feature Engineering ───────────────────────────────────
+
+def extract_features(books: list) -> pd.DataFrame:
+    """Extract ML features from book data."""
+    features = []
+
+    for book in books:
+        total_returns = book["lateReturns"] + book["onTimeReturns"]
+        late_rate = book["lateReturns"] / max(1, total_returns)
+
+        // Compute popularity score
+        rating_component = book["averageRating"] * 0.3
+        checkout_component = min(book["totalCheckouts"] / 100.0, 1.0) * 0.5
+        review_component = min(book["totalRatings"] / 50.0, 1.0) * 0.2
+        popularity_score = rating_component + checkout_component + review_component
+
+        // Age of book (years since publish)
+        book_age = 2026 - book["publishYear"]
+
+        feature = {
+            "totalCheckouts": book["totalCheckouts"],
+            "lateReturns": book["lateReturns"],
+            "onTimeReturns": book["onTimeReturns"],
+            "lateReturnRate": late_rate,
+            "averageRating": book["averageRating"],
+            "totalRatings": book["totalRatings"],
+            "totalCopies": book["totalCopies"],
+            "availableCopies": book["availableCopies"],
+            "pageCount": book["pageCount"],
+            "publishYear": book["publishYear"],
+            "bookAge": book_age,
+            "popularityScore": popularity_score,
+            "checkoutsPerCopy": book["totalCheckouts"] / max(1, book["totalCopies"]),
+            "ratingsPerCheckout": book["totalRatings"] / max(1, book["totalCheckouts"]),
+            "isEnglish": 1 if book["language"] == "English" else 0,
+        }
+        features.append(feature)
+
+    return pd.DataFrame(features)
+
+// ─── Label Generation (for training) ───────────────────────
+
+def generate_labels(books: list) -> list:
+    """Generate prediction labels based on book characteristics.
+
+    Rules:
+    - most_likely_booked:  High checkouts (>40) AND high rating (>3.5)
+    - late_return:         High late return rate (>0.25) AND checkouts > 10
+    - on_time_return:      Low late rate (<0.10) AND checkouts > 15
+    - less_likely_booked:  Low checkouts (<10) OR low rating (<2.5)
+    """
+    labels = []
+
+    for book in books:
+        total_returns = book["lateReturns"] + book["onTimeReturns"]
+        late_rate = book["lateReturns"] / max(1, total_returns)
+        checkouts = book["totalCheckouts"]
+        rating = book["averageRating"]
+
+        if checkouts > 40 and rating > 3.5:
+            labels.append("most_likely_booked")
+        elif late_rate > 0.25 and checkouts > 10:
+            labels.append("late_return")
+        elif late_rate < 0.10 and checkouts > 15:
+            labels.append("on_time_return")
+        else:
+            labels.append("less_likely_booked")
+
+    return labels
+
+// ─── Model Training ────────────────────────────────────────
+
+public class PredictionEngine {
+    private RandomForestClassifier model
+    private GradientBoostingClassifier boostModel
+    private StandardScaler scaler
+    private LabelEncoder labelEncoder
+    private boolean trained = false
+    private list featureNames
+    private dict classDistribution
+    private float accuracy
+
+    public PredictionEngine() {
+        this.scaler = StandardScaler()
+        this.labelEncoder = LabelEncoder()
+        this.model = None
+        this.boostModel = None
+        this.featureNames = None
+        this.classDistribution = {}
+    }
+
+    def train(self, books: list) -> dict:
+        """Train the prediction model on book data."""
+        print("\n=== Training Prediction Engine ===\n")
+
+        // Step 1: Extract features
+        print("[1/5] Extracting features...")
+        X = extract_features(books)
+        self.featureNames = list(X.columns)
+        print(f"      Features: {len(self.featureNames)}")
+        print(f"      Samples:  {len(X)}")
+
+        // Step 2: Generate labels
+        print("[2/5] Generating labels...")
+        y = generate_labels(books)
+        y_encoded = self.labelEncoder.fit_transform(y)
+
+        // Show class distribution
+        unique, counts = np.unique(y, return_counts=True)
+        self.classDistribution = dict(zip(unique, [int(c) for c in counts]))
+        print(f"      Class distribution:")
+        for cls, count in self.classDistribution.items():
+            print(f"        {cls:25s}: {count:5d} ({count/len(y)*100:.1f}%)")
+
+        // Step 3: Scale features
+        print("[3/5] Scaling features...")
+        X_scaled = self.scaler.fit_transform(X)
+
+        // Step 4: Train-test split
+        print("[4/5] Training models...")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_scaled, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+        )
+
+        // Train Random Forest (primary model)
+        self.model = RandomForestClassifier(
+            n_estimators=200,
+            max_depth=15,
+            min_samples_split=5,
+            min_samples_leaf=2,
+            class_weight="balanced",
+            random_state=42,
+            n_jobs=-1
+        )
+        self.model.fit(X_train, y_train)
+
+        // Train Gradient Boosting (secondary model for ensemble)
+        self.boostModel = GradientBoostingClassifier(
+            n_estimators=100,
+            max_depth=8,
+            learning_rate=0.1,
+            random_state=42
+        )
+        self.boostModel.fit(X_train, y_train)
+
+        // Step 5: Evaluate
+        print("[5/5] Evaluating...")
+        y_pred_rf = self.model.predict(X_test)
+        y_pred_gb = self.boostModel.predict(X_test)
+
+        // Ensemble: majority vote (simple average of probabilities)
+        rf_proba = self.model.predict_proba(X_test)
+        gb_proba = self.boostModel.predict_proba(X_test)
+        ensemble_proba = (rf_proba + gb_proba) / 2.0
+        y_pred_ensemble = np.argmax(ensemble_proba, axis=1)
+
+        rf_accuracy = accuracy_score(y_test, y_pred_rf)
+        gb_accuracy = accuracy_score(y_test, y_pred_gb)
+        ensemble_accuracy = accuracy_score(y_test, y_pred_ensemble)
+
+        self.accuracy = ensemble_accuracy
+
+        print(f"\n      Random Forest accuracy:  {rf_accuracy:.4f}")
+        print(f"      Gradient Boost accuracy: {gb_accuracy:.4f}")
+        print(f"      Ensemble accuracy:       {ensemble_accuracy:.4f}")
+
+        // Detailed classification report
+        target_names = self.labelEncoder.classes_
+        print(f"\n      Classification Report (Ensemble):")
+        report = classification_report(y_test, y_pred_ensemble, target_names=target_names)
+        for line in report.split("\n"):
+            print(f"      {line}")
+
+        // Feature importance
+        importances = self.model.feature_importances_
+        feature_imp = sorted(
+            zip(self.featureNames, importances),
+            key=lambda x: -x[1]
+        )
+        print(f"\n      Top Feature Importances:")
+        for name, imp in feature_imp[:8]:
+            bar = "█" * int(imp * 50)
+            print(f"        {name:25s} {imp:.4f} {bar}")
+
+        self.trained = true
+
+        // Cross-validation score
+        cv_scores = cross_val_score(self.model, X_scaled, y_encoded, cv=5, scoring="accuracy")
+        print(f"\n      5-Fold CV Accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std():.4f})")
+
+        return {
+            "rfAccuracy": round(rf_accuracy, 4),
+            "gbAccuracy": round(gb_accuracy, 4),
+            "ensembleAccuracy": round(ensemble_accuracy, 4),
+            "cvMean": round(cv_scores.mean(), 4),
+            "cvStd": round(cv_scores.std(), 4),
+            "classDistribution": self.classDistribution,
+            "featureImportances": {name: round(imp, 4) for name, imp in feature_imp}
+        }
+
+    def predict_books(self, books: list) -> list:
+        """Predict tags for all books and return updated book list."""
+        if not self.trained:
+            raise RuntimeError("Model not trained. Call train() first.")
+
+        X = extract_features(books)
+        X_scaled = self.scaler.transform(X)
+
+        // Ensemble prediction
+        rf_proba = self.model.predict_proba(X_scaled)
+        gb_proba = self.boostModel.predict_proba(X_scaled)
+        ensemble_proba = (rf_proba + gb_proba) / 2.0
+        predictions = np.argmax(ensemble_proba, axis=1)
+        confidences = np.max(ensemble_proba, axis=1)
+
+        tag_names = self.labelEncoder.classes_
+
+        for i, book in enumerate(books):
+            tag = tag_names[predictions[i]]
+            book["predictionTag"] = tag
+            book["predictionConfidence"] = round(float(confidences[i]), 4)
+
+        // Summary
+        tag_counts = {}
+        for book in books:
+            tag = book["predictionTag"]
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+        print(f"\n=== Prediction Results ===")
+        for tag, count in sorted(tag_counts.items(), key=lambda x: -x[1]):
+            print(f"  {tag:25s}: {count:5d} ({count/len(books)*100:.1f}%)")
+
+        return books
+
+    // Java-style batch prediction using thread pool
+    public void predictBatch(List<Map<String, Object>> bookBatches) {
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        for batch in bookBatches:
+            future = CompletableFuture.runAsync(() -> {
+                self.predict_books(batch)
+            }, executor)
+            futures.add(future)
+
+        // Wait for all batches
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join()
+        executor.shutdown()
+        print("Batch prediction complete.")
+    }
+
+    def save_model(self, path: str = "backend/ml/model"):
+        """Save trained model to disk."""
+        import os
+        os.makedirs(path, exist_ok=True)
+        joblib.dump(self.model, f"{path}/rf_model.pkl")
+        joblib.dump(self.boostModel, f"{path}/gb_model.pkl")
+        joblib.dump(self.scaler, f"{path}/scaler.pkl")
+        joblib.dump(self.labelEncoder, f"{path}/label_encoder.pkl")
+        joblib.dump(self.featureNames, f"{path}/feature_names.pkl")
+        print(f"Model saved to {path}/")
+
+    def load_model(self, path: str = "backend/ml/model"):
+        """Load trained model from disk."""
+        self.model = joblib.load(f"{path}/rf_model.pkl")
+        self.boostModel = joblib.load(f"{path}/gb_model.pkl")
+        self.scaler = joblib.load(f"{path}/scaler.pkl")
+        self.labelEncoder = joblib.load(f"{path}/label_encoder.pkl")
+        self.featureNames = joblib.load(f"{path}/feature_names.pkl")
+        self.trained = true
+        print(f"Model loaded from {path}/")
+
+    def get_model_info(self) -> dict:
+        """Return model metadata for API."""
+        return {
+            "trained": self.trained,
+            "accuracy": round(self.accuracy, 4) if self.trained else None,
+            "features": self.featureNames,
+            "classes": list(self.labelEncoder.classes_) if self.trained else [],
+            "classDistribution": self.classDistribution
+        }

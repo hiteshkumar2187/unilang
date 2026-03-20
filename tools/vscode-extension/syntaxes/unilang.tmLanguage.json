@@ -1,0 +1,644 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "UniLang",
+  "scopeName": "source.unilang",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#decorators" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords-python" },
+    { "include": "#keywords-java" },
+    { "include": "#storage-types" },
+    { "include": "#constants" },
+    { "include": "#class-definition" },
+    { "include": "#interface-definition" },
+    { "include": "#function-definition-python" },
+    { "include": "#function-definition-java" },
+    { "include": "#generics" },
+    { "include": "#type-annotation-arrow" },
+    { "include": "#type-annotation-colon" },
+    { "include": "#operators" },
+    { "include": "#punctuation" },
+    { "include": "#function-call" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.unilang",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "captures": {
+            "0": { "name": "punctuation.definition.comment.unilang" }
+          }
+        },
+        {
+          "name": "comment.line.double-slash.unilang",
+          "match": "//.*$",
+          "captures": {
+            "0": { "name": "comment.line.double-slash.unilang" }
+          }
+        },
+        {
+          "name": "comment.line.hash.unilang",
+          "match": "#.*$",
+          "captures": {
+            "0": { "name": "comment.line.hash.unilang" }
+          }
+        }
+      ]
+    },
+    "decorators": {
+      "patterns": [
+        {
+          "name": "meta.decorator.unilang",
+          "match": "(@)(\\w+(?:\\.\\w+)*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.decorator.unilang" },
+            "2": { "name": "entity.name.function.decorator.unilang" }
+          }
+        },
+        {
+          "name": "meta.decorator.unilang",
+          "begin": "(@)(\\w+(?:\\.\\w+)*)\\s*(\\()",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.decorator.unilang" },
+            "2": { "name": "entity.name.function.decorator.unilang" },
+            "3": { "name": "punctuation.parenthesis.begin.unilang" }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": { "name": "punctuation.parenthesis.end.unilang" }
+          },
+          "patterns": [
+            { "include": "$self" }
+          ]
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.double.unilang",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          },
+          "patterns": [
+            { "include": "#string-escapes" }
+          ]
+        },
+        {
+          "name": "string.quoted.triple.single.unilang",
+          "begin": "'''",
+          "end": "'''",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          },
+          "patterns": [
+            { "include": "#string-escapes" }
+          ]
+        },
+        {
+          "name": "string.interpolated.fstring.unilang",
+          "begin": "(f)(\"\"\")",
+          "beginCaptures": {
+            "1": { "name": "storage.type.string.unilang" },
+            "2": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "end": "\"\"\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          },
+          "patterns": [
+            { "include": "#fstring-interpolation" },
+            { "include": "#string-escapes" }
+          ]
+        },
+        {
+          "name": "string.interpolated.fstring.unilang",
+          "begin": "(f)(\")",
+          "beginCaptures": {
+            "1": { "name": "storage.type.string.unilang" },
+            "2": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          },
+          "patterns": [
+            { "include": "#fstring-interpolation" },
+            { "include": "#string-escapes" }
+          ]
+        },
+        {
+          "name": "string.interpolated.fstring.unilang",
+          "begin": "(f)(')",
+          "beginCaptures": {
+            "1": { "name": "storage.type.string.unilang" },
+            "2": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "end": "'",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          },
+          "patterns": [
+            { "include": "#fstring-interpolation" },
+            { "include": "#string-escapes" }
+          ]
+        },
+        {
+          "name": "string.quoted.raw.double.unilang",
+          "begin": "(r)(\")",
+          "beginCaptures": {
+            "1": { "name": "storage.type.string.unilang" },
+            "2": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          }
+        },
+        {
+          "name": "string.quoted.raw.single.unilang",
+          "begin": "(r)(')",
+          "beginCaptures": {
+            "1": { "name": "storage.type.string.unilang" },
+            "2": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "end": "'",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          }
+        },
+        {
+          "name": "string.quoted.double.unilang",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          },
+          "patterns": [
+            { "include": "#string-escapes" }
+          ]
+        },
+        {
+          "name": "string.quoted.single.unilang",
+          "begin": "'",
+          "end": "'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.unilang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.unilang" }
+          },
+          "patterns": [
+            { "include": "#string-escapes" }
+          ]
+        }
+      ]
+    },
+    "string-escapes": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.unilang",
+          "match": "\\\\(?:[abfnrtv\\\\'\"]|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|[0-7]{1,3}|N\\{[^}]+\\})"
+        },
+        {
+          "name": "constant.character.escape.newline.unilang",
+          "match": "\\\\$"
+        }
+      ]
+    },
+    "fstring-interpolation": {
+      "patterns": [
+        {
+          "name": "meta.interpolation.unilang",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.interpolation.begin.unilang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.interpolation.end.unilang" }
+          },
+          "contentName": "source.unilang.embedded",
+          "patterns": [
+            { "include": "$self" }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.unilang",
+          "match": "\\b0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*[lL]?\\b"
+        },
+        {
+          "name": "constant.numeric.octal.unilang",
+          "match": "\\b0[oO][0-7](?:_?[0-7])*[lL]?\\b"
+        },
+        {
+          "name": "constant.numeric.binary.unilang",
+          "match": "\\b0[bB][01](?:_?[01])*[lL]?\\b"
+        },
+        {
+          "name": "constant.numeric.float.scientific.unilang",
+          "match": "\\b[0-9](?:_?[0-9])*(?:\\.[0-9](?:_?[0-9])*)?[eE][+-]?[0-9](?:_?[0-9])*[fFdD]?\\b"
+        },
+        {
+          "name": "constant.numeric.float.unilang",
+          "match": "\\b[0-9](?:_?[0-9])*\\.[0-9](?:_?[0-9])*[fFdD]?\\b"
+        },
+        {
+          "name": "constant.numeric.float.unilang",
+          "match": "\\b\\.[0-9](?:_?[0-9])*[fFdD]?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.unilang",
+          "match": "\\b[0-9](?:_?[0-9])*[lLfFdD]?\\b"
+        }
+      ]
+    },
+    "keywords-python": {
+      "patterns": [
+        {
+          "name": "keyword.control.flow.unilang",
+          "match": "\\b(if|elif|else|for|while|with|try|except|finally|raise|pass|return|yield|break|continue|do)\\b"
+        },
+        {
+          "name": "keyword.control.import.unilang",
+          "match": "\\b(import|from|as)\\b"
+        },
+        {
+          "name": "keyword.other.unilang",
+          "match": "\\b(del|global|nonlocal|assert)\\b"
+        },
+        {
+          "name": "keyword.control.async.unilang",
+          "match": "\\b(async|await)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.unilang",
+          "match": "\\b(and|or|not)\\b"
+        },
+        {
+          "name": "keyword.operator.comparison.unilang",
+          "match": "\\b(is|in)\\b"
+        },
+        {
+          "name": "keyword.other.lambda.unilang",
+          "match": "\\b(lambda)\\b"
+        },
+        {
+          "name": "keyword.other.definition.unilang",
+          "match": "\\b(def|class)\\b"
+        }
+      ]
+    },
+    "keywords-java": {
+      "patterns": [
+        {
+          "name": "storage.modifier.access.unilang",
+          "match": "\\b(public|private|protected)\\b"
+        },
+        {
+          "name": "storage.modifier.unilang",
+          "match": "\\b(static|final|abstract|synchronized|volatile|transient|native)\\b"
+        },
+        {
+          "name": "keyword.control.java.unilang",
+          "match": "\\b(switch|case|default|throw|throws|catch)\\b"
+        },
+        {
+          "name": "keyword.operator.new.unilang",
+          "match": "\\b(new)\\b"
+        },
+        {
+          "name": "keyword.operator.instanceof.unilang",
+          "match": "\\b(instanceof)\\b"
+        },
+        {
+          "name": "variable.language.this.unilang",
+          "match": "\\b(this)\\b"
+        },
+        {
+          "name": "variable.language.super.unilang",
+          "match": "\\b(super)\\b"
+        },
+        {
+          "name": "keyword.other.void.unilang",
+          "match": "\\b(void)\\b"
+        },
+        {
+          "name": "storage.type.object.unilang",
+          "match": "\\b(interface|enum)\\b"
+        },
+        {
+          "name": "keyword.other.inheritance.unilang",
+          "match": "\\b(extends|implements)\\b"
+        }
+      ]
+    },
+    "storage-types": {
+      "patterns": [
+        {
+          "name": "storage.type.primitive.unilang",
+          "match": "\\b(int|float|double|boolean|char|byte|short|long)\\b"
+        },
+        {
+          "name": "storage.type.string.unilang",
+          "match": "\\b(String)\\b"
+        },
+        {
+          "name": "storage.type.variable.unilang",
+          "match": "\\b(var|val|const)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.true.unilang",
+          "match": "\\b(True|true)\\b"
+        },
+        {
+          "name": "constant.language.boolean.false.unilang",
+          "match": "\\b(False|false)\\b"
+        },
+        {
+          "name": "constant.language.null.unilang",
+          "match": "\\b(None|null)\\b"
+        },
+        {
+          "name": "variable.language.self.unilang",
+          "match": "\\b(self)\\b"
+        },
+        {
+          "name": "constant.other.caps.unilang",
+          "match": "\\b[A-Z][A-Z_0-9]{2,}\\b"
+        }
+      ]
+    },
+    "class-definition": {
+      "patterns": [
+        {
+          "name": "meta.class.unilang",
+          "match": "\\b(class)\\s+([A-Za-z_]\\w*)(?:\\s*(\\())?",
+          "captures": {
+            "1": { "name": "keyword.other.definition.unilang" },
+            "2": { "name": "entity.name.type.class.unilang" },
+            "3": { "name": "punctuation.parenthesis.begin.unilang" }
+          }
+        },
+        {
+          "name": "meta.class.java.unilang",
+          "match": "\\b(class)\\s+([A-Za-z_]\\w*)(?:\\s*(<))?",
+          "captures": {
+            "1": { "name": "keyword.other.definition.unilang" },
+            "2": { "name": "entity.name.type.class.unilang" },
+            "3": { "name": "punctuation.definition.generic.begin.unilang" }
+          }
+        }
+      ]
+    },
+    "interface-definition": {
+      "patterns": [
+        {
+          "name": "meta.interface.unilang",
+          "match": "\\b(interface)\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "1": { "name": "storage.type.object.unilang" },
+            "2": { "name": "entity.name.type.interface.unilang" }
+          }
+        },
+        {
+          "name": "meta.enum.unilang",
+          "match": "\\b(enum)\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "1": { "name": "storage.type.object.unilang" },
+            "2": { "name": "entity.name.type.enum.unilang" }
+          }
+        }
+      ]
+    },
+    "function-definition-python": {
+      "patterns": [
+        {
+          "name": "meta.function.python.unilang",
+          "match": "\\b(def)\\s+([A-Za-z_]\\w*)\\s*(\\()",
+          "captures": {
+            "1": { "name": "keyword.other.definition.unilang" },
+            "2": { "name": "entity.name.function.unilang" },
+            "3": { "name": "punctuation.parenthesis.begin.unilang" }
+          }
+        },
+        {
+          "name": "meta.function.async.unilang",
+          "match": "\\b(async)\\s+(def)\\s+([A-Za-z_]\\w*)\\s*(\\()",
+          "captures": {
+            "1": { "name": "keyword.control.async.unilang" },
+            "2": { "name": "keyword.other.definition.unilang" },
+            "3": { "name": "entity.name.function.unilang" },
+            "4": { "name": "punctuation.parenthesis.begin.unilang" }
+          }
+        }
+      ]
+    },
+    "function-definition-java": {
+      "patterns": [
+        {
+          "name": "meta.function.java.unilang",
+          "match": "\\b(?:(?:public|private|protected|static|final|abstract|synchronized|native)\\s+)*(?:void|int|float|double|boolean|String|char|byte|short|long|[A-Z]\\w*(?:<[^>]*>)?)\\s+([A-Za-z_]\\w*)\\s*(\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.unilang" },
+            "2": { "name": "punctuation.parenthesis.begin.unilang" }
+          }
+        }
+      ]
+    },
+    "generics": {
+      "patterns": [
+        {
+          "name": "meta.generic.unilang",
+          "begin": "<(?=[A-Z])",
+          "end": ">",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.generic.begin.unilang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.generic.end.unilang" }
+          },
+          "patterns": [
+            {
+              "name": "storage.type.generic.unilang",
+              "match": "\\b([A-Z]\\w*)\\b"
+            },
+            {
+              "name": "keyword.other.inheritance.unilang",
+              "match": "\\b(extends|super)\\b"
+            },
+            {
+              "name": "punctuation.separator.comma.unilang",
+              "match": ","
+            },
+            {
+              "name": "keyword.operator.wildcard.unilang",
+              "match": "\\?"
+            },
+            { "include": "#generics" }
+          ]
+        }
+      ]
+    },
+    "type-annotation-arrow": {
+      "patterns": [
+        {
+          "name": "meta.return-type.unilang",
+          "match": "(->)\\s*([A-Za-z_]\\w*(?:\\[.*?\\])?)",
+          "captures": {
+            "1": { "name": "punctuation.definition.arrow.unilang" },
+            "2": { "name": "entity.name.type.return.unilang" }
+          }
+        }
+      ]
+    },
+    "type-annotation-colon": {
+      "patterns": [
+        {
+          "name": "meta.type-annotation.unilang",
+          "match": "(?<=[A-Za-z_]\\w*)\\s*(:)\\s*([A-Z]\\w*(?:\\[.*?\\])?)",
+          "captures": {
+            "1": { "name": "punctuation.definition.colon.unilang" },
+            "2": { "name": "entity.name.type.annotation.unilang" }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.augmented.unilang",
+          "match": "\\+=|-=|\\*=|/=|//=|%=|\\*\\*=|&=|\\|=|\\^=|>>=|<<="
+        },
+        {
+          "name": "keyword.operator.comparison.unilang",
+          "match": "==|!=|<=|>=|<>|<|>"
+        },
+        {
+          "name": "keyword.operator.arithmetic.unilang",
+          "match": "\\*\\*|//|\\+|-|\\*|/|%"
+        },
+        {
+          "name": "keyword.operator.bitwise.unilang",
+          "match": "<<|>>|&|\\||\\^|~"
+        },
+        {
+          "name": "keyword.operator.logical.symbol.unilang",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.assignment.unilang",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.ternary.unilang",
+          "match": "\\?"
+        },
+        {
+          "name": "keyword.operator.arrow.unilang",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.lambda.unilang",
+          "match": "=>"
+        },
+        {
+          "name": "keyword.operator.spread.unilang",
+          "match": "\\.\\.\\."
+        },
+        {
+          "name": "keyword.operator.dot.unilang",
+          "match": "\\."
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.parenthesis.begin.unilang",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.parenthesis.end.unilang",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.bracket.begin.unilang",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.bracket.end.unilang",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.brace.begin.unilang",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.brace.end.unilang",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.separator.comma.unilang",
+          "match": ","
+        },
+        {
+          "name": "punctuation.terminator.semicolon.unilang",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.colon.unilang",
+          "match": ":"
+        }
+      ]
+    },
+    "function-call": {
+      "patterns": [
+        {
+          "name": "meta.function-call.unilang",
+          "match": "\\b([A-Za-z_]\\w*)\\s*(\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.call.unilang" },
+            "2": { "name": "punctuation.parenthesis.begin.unilang" }
+          }
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "entity.name.type.class.reference.unilang",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+        },
+        {
+          "name": "variable.other.unilang",
+          "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}
