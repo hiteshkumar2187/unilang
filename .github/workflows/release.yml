@@ -270,7 +270,7 @@ jobs:
           tag_name: ${{ github.ref_name || format('v{0}', github.event.inputs.version) }}
           name: UniLang ${{ github.ref_name || github.event.inputs.version }}
           draft: false
-          prerelease: true
+          prerelease: false
           fail_on_unmatched_files: false
           body: |
             ## UniLang ${{ github.ref_name || github.event.inputs.version }}
