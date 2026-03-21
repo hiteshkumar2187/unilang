@@ -26,7 +26,7 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: unilang-cli-macos-arm64
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             artifact: unilang-cli-macos-x86_64
           - os: ubuntu-latest
@@ -47,6 +47,17 @@ jobs:
 
       - name: Build CLI and LSP
         run: cargo build --release --target ${{ matrix.target }}
+
+      # Ad-hoc code sign macOS binaries to prevent Gatekeeper "malware" warnings
+      - name: Sign macOS binaries
+        if: runner.os == 'macOS'
+        run: |
+          for bin in target/${{ matrix.target }}/release/unilang target/${{ matrix.target }}/release/unilang-lsp; do
+            if [ -f "$bin" ]; then
+              codesign --force --deep -s - "$bin"
+              echo "Signed: $bin"
+            fi
+          done
 
       # Binary name is "unilang" (not "unilang-cli") per Cargo.toml [[bin]]
       - name: Package (Unix)
@@ -157,6 +168,14 @@ jobs:
           npm run build:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          CSC_LINK: ""
+      - name: Ad-hoc sign the app
+        run: |
+          APP_PATH=$(find tools/unilang-ide/dist -name "*.app" -maxdepth 3 | head -1)
+          if [ -n "$APP_PATH" ]; then
+            codesign --force --deep -s - "$APP_PATH"
+            echo "Signed: $APP_PATH"
+          fi
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:

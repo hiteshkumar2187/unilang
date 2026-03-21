@@ -12,6 +12,7 @@ files:
 
 mac:
   category: public.app-category.developer-tools
+  identity: null
   target:
     - target: dmg
       arch:
@@ -19,9 +20,14 @@ mac:
     - target: zip
       arch:
         - arm64
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  entitlements: null
+  entitlementsInherit: null
 
 dmg:
   writeUpdateInfo: false
+  sign: false
 
 win:
   target:
@@ -40,3 +46,4 @@ linux:
   maintainer: UniLang Contributors
 
 publish: null
+afterSign: null

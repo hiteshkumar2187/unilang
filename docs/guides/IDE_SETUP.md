@@ -39,14 +39,22 @@ Download the UniLang IDE for your platform from the [GitHub Releases](https://gi
 5. Wait for the copy to complete (the progress bar will appear briefly).
 6. Eject the DMG by right-clicking the "UniLang IDE" volume on your Desktop (or in the Finder sidebar) and selecting **"Eject"**.
 7. Open **Applications** in Finder and double-click **"UniLang IDE"** to launch it.
-8. **If macOS blocks the app** with a message like "UniLang IDE can't be opened because it is from an unidentified developer":
+8. **If macOS shows "UniLang IDE is damaged" or "can't be verified":**
+
+   This happens because the app is not notarized with Apple. It is safe — built from open source on GitHub Actions.
+
+   **Recommended fix** — open Terminal and run:
+   ```bash
+   sudo xattr -rd com.apple.quarantine /Applications/UniLang\ IDE.app
+   ```
+   Then double-click the app again. It will open normally.
+
+   **Alternative fix:**
    - Do **not** click "Move to Trash."
-   - Open **System Preferences** (or **System Settings** on macOS Ventura and later).
-   - Click **Privacy & Security**.
-   - Scroll down. You will see a message about UniLang IDE being blocked.
-   - Click **"Open Anyway"**.
-   - In the confirmation dialog, click **"Open"**.
-   - You only need to do this once. After the first launch, macOS will remember your choice.
+   - Open **System Settings** → **Privacy & Security**
+   - Scroll down — you'll see UniLang IDE was blocked
+   - Click **"Open Anyway"** → **"Open"** in the confirmation dialog
+   - You only need to do this once.
 
 ---
 

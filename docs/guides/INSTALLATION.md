@@ -264,9 +264,45 @@ You need to use `sudo` when copying to `/usr/local/bin/`:
 sudo cp unilang /usr/local/bin/
 ```
 
-### macOS Gatekeeper blocks the app
+### macOS: "Apple could not verify unilang is free of malware"
 
-Go to **System Preferences** (or **System Settings**) > **Privacy & Security** and click **"Open Anyway"**.
+This happens because the binaries are not notarized with an Apple Developer certificate. The binaries are safe — they are built from open-source code on GitHub Actions.
+
+**Fix (choose one):**
+
+**Option A — Remove quarantine attribute (recommended):**
+```bash
+# For CLI binaries:
+sudo xattr -rd com.apple.quarantine /usr/local/bin/unilang
+sudo xattr -rd com.apple.quarantine /usr/local/bin/unilang-lsp
+
+# For the IDE app:
+sudo xattr -rd com.apple.quarantine /Applications/UniLang\ IDE.app
+```
+
+**Option B — Allow via System Settings:**
+1. Open **System Settings** (or **System Preferences** on older macOS)
+2. Go to **Privacy & Security**
+3. Scroll down — you'll see a message about "unilang" being blocked
+4. Click **"Open Anyway"**
+5. In the confirmation dialog, click **"Open"**
+
+**Option C — Allow via right-click:**
+1. Right-click (or Control-click) the binary/app in Finder
+2. Select **"Open"** from the context menu
+3. Click **"Open"** in the dialog
+
+### macOS: "UniLang IDE is damaged and can't be opened"
+
+This is also a Gatekeeper issue. Fix it by removing the quarantine flag:
+```bash
+sudo xattr -rd com.apple.quarantine /Applications/UniLang\ IDE.app
+```
+If you downloaded the `.dmg`, remove quarantine from the DMG first:
+```bash
+sudo xattr -rd com.apple.quarantine ~/Downloads/UniLang\ IDE-*.dmg
+```
+Then re-open the DMG and drag the app to Applications again.
 
 ### Rust build fails with "edition 2021 is not supported"
 
