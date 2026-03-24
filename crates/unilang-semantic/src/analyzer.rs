@@ -46,6 +46,7 @@ impl Analyzer {
 
     /// Run analysis on the given module and return results + diagnostics.
     pub fn analyze(mut self, module: &Module) -> (AnalysisResult, DiagnosticBag) {
+        self.inject_prelude();
         for stmt in &module.statements {
             self.visit_stmt(stmt);
         }
@@ -65,6 +66,45 @@ impl Analyzer {
 
     fn pop_scope(&mut self) {
         self.scopes.pop_scope();
+    }
+
+    /// Names available in every module without an explicit import.
+    ///
+    /// Must stay in sync with `unilang_stdlib::register_all` / VM builtins. Using `Dynamic`
+    /// avoids false arity errors for variadic builtins like `print`.
+    fn inject_prelude(&mut self) {
+        let prelude_span = Span::new(0, 0);
+        const PRELUDE_FUNCS: &[&str] = &[
+            "print",
+            "println",
+            "input",
+            "int",
+            "float",
+            "str",
+            "bool",
+            "type",
+            "isinstance",
+            "hash",
+        ];
+        for name in PRELUDE_FUNCS {
+            let symbol = Symbol {
+                name: (*name).to_string(),
+                ty: Type::Dynamic,
+                kind: SymbolKind::Function,
+                mutable: false,
+                span: prelude_span,
+            };
+            self.define_symbol(name, symbol, prelude_span);
+        }
+        // Java-style `System.out.println(...)` is implemented as a VM facade, not real JVM.
+        let system = Symbol {
+            name: "System".to_string(),
+            ty: Type::Dynamic,
+            kind: SymbolKind::Variable,
+            mutable: false,
+            span: prelude_span,
+        };
+        self.define_symbol("System", system, prelude_span);
     }
 
     fn define_symbol(&mut self, name: &str, symbol: Symbol, name_span: Span) {

@@ -3,14 +3,36 @@
 
 //! Core built-in functions: I/O, type conversion, type checking, utility.
 
+use std::collections::HashMap;
+
 use unilang_runtime::error::RuntimeError;
-use unilang_runtime::value::RuntimeValue;
+use unilang_runtime::value::{InstanceData, RuntimeValue};
 use unilang_runtime::vm::VM;
+
+/// Minimal `System.out.println` facade for Java-style hello-world code (not the real JVM).
+fn java_lang_system() -> RuntimeValue {
+    let mut out_fields = HashMap::new();
+    out_fields.insert(
+        "println".to_string(),
+        RuntimeValue::NativeFunction("println".to_string()),
+    );
+    let out = RuntimeValue::Instance(InstanceData {
+        class_name: "PrintStream".to_string(),
+        fields: out_fields,
+    });
+    let mut sys_fields = HashMap::new();
+    sys_fields.insert("out".to_string(), out);
+    RuntimeValue::Instance(InstanceData {
+        class_name: "java.lang.System".to_string(),
+        fields: sys_fields,
+    })
+}
 
 /// Register core built-in functions.
 pub fn register_all(vm: &mut VM) {
     // I/O
     vm.register_builtin("print", builtin_print);
+    vm.register_builtin("println", builtin_print);
     vm.register_builtin("input", builtin_input);
 
     // Type conversion
@@ -25,6 +47,8 @@ pub fn register_all(vm: &mut VM) {
 
     // Utility
     vm.register_builtin("hash", builtin_hash);
+
+    vm.set_global("System", java_lang_system());
 }
 
 fn builtin_print(args: &[RuntimeValue]) -> Result<RuntimeValue, RuntimeError> {
