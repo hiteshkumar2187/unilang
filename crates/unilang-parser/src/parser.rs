@@ -211,9 +211,13 @@ impl<'src> Parser<'src> {
         let mut statements = Vec::new();
         self.skip_terminators();
         while !self.at_eof() {
+            let before = self.pos;
             let stmt = crate::stmt::parse_stmt(self);
             statements.push(stmt);
             self.skip_terminators();
+            if self.pos == before {
+                self.advance(); // force progress to prevent infinite loop
+            }
         }
         Module {
             source_id: self.source_id,
