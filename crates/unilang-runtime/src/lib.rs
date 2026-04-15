@@ -22,11 +22,11 @@ pub fn execute(bytecode: &Bytecode) -> Result<RuntimeValue, RuntimeError> {
     vm.run(bytecode)
 }
 
-/// Execute bytecode and also return captured print output.
+/// Execute bytecode and also return captured print output (used in tests).
 pub fn execute_with_output(
     bytecode: &Bytecode,
 ) -> Result<(RuntimeValue, Vec<String>), RuntimeError> {
-    let mut vm = VM::new();
+    let mut vm = VM::new_with_capture();
     let result = vm.run(bytecode)?;
     let output = vm.output().to_vec();
     Ok((result, output))

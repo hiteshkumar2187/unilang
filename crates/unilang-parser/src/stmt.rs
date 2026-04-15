@@ -53,8 +53,11 @@ pub(crate) fn parse_stmt(p: &mut Parser<'_>) -> Spanned<Stmt> {
         TokenKind::KwVar | TokenKind::KwVal | TokenKind::KwConst => {
             parse_var_decl_keyword(p, modifiers)
         }
-        TokenKind::Identifier if has_modifiers_or_visibility(visibility, &modifiers) => {
+        TokenKind::Identifier | TokenKind::KwVoid
+            if has_modifiers_or_visibility(visibility, &modifiers) =>
+        {
             // Could be Java-style: `int x = ...` or `int foo(...)` with modifiers
+            // KwVoid handles `public void method()` — void is a keyword, not an Identifier
             parse_java_decl_or_expr(p, visibility, modifiers, decorators, syntax_hint)
         }
         TokenKind::Identifier => {
@@ -580,8 +583,12 @@ fn parse_class_body(p: &mut Parser<'_>) -> (Vec<Spanned<Stmt>>, SyntaxOrigin) {
         p.advance(); // {
         p.skip_terminators();
         while !p.at(TokenKind::RBrace) && !p.at_eof() {
+            let before = p.pos;
             stmts.push(parse_stmt(p));
             p.skip_terminators();
+            if p.pos == before {
+                p.advance(); // force progress to prevent infinite loop
+            }
         }
         p.expect(TokenKind::RBrace);
         (stmts, SyntaxOrigin::Java)
@@ -594,8 +601,12 @@ fn parse_class_body(p: &mut Parser<'_>) -> (Vec<Spanned<Stmt>>, SyntaxOrigin) {
         if p.at(TokenKind::Indent) {
             p.advance();
             while !p.at(TokenKind::Dedent) && !p.at_eof() {
+                let before = p.pos;
                 stmts.push(parse_stmt(p));
                 p.skip_terminators();
+                if p.pos == before {
+                    p.advance(); // force progress to prevent infinite loop
+                }
             }
             p.eat(TokenKind::Dedent);
         }
@@ -627,8 +638,12 @@ fn parse_brace_block(p: &mut Parser<'_>) -> Block {
     p.skip_terminators();
     let mut stmts = Vec::new();
     while !p.at(TokenKind::RBrace) && !p.at_eof() {
+        let before = p.pos;
         stmts.push(parse_stmt(p));
         p.skip_terminators();
+        if p.pos == before {
+            p.advance(); // force progress to prevent infinite loop
+        }
     }
     p.expect(TokenKind::RBrace);
     Block {
@@ -648,8 +663,12 @@ fn parse_indent_block(p: &mut Parser<'_>) -> Block {
     if p.at(TokenKind::Indent) {
         p.advance();
         while !p.at(TokenKind::Dedent) && !p.at_eof() {
+            let before = p.pos;
             stmts.push(parse_stmt(p));
             p.skip_terminators();
+            if p.pos == before {
+                p.advance(); // force progress to prevent infinite loop
+            }
         }
         p.eat(TokenKind::Dedent);
     } else {

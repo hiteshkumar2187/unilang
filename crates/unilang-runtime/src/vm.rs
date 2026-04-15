@@ -26,6 +26,11 @@ struct CallFrame {
 /// Type alias for native builtin function implementations.
 pub type BuiltinFn = Box<dyn Fn(&[RuntimeValue]) -> Result<RuntimeValue, RuntimeError>>;
 
+/// Maximum operand stack depth before a stack-overflow error is raised.
+const MAX_STACK_DEPTH: usize = 100_000;
+/// Maximum call-frame depth (recursion limit).
+const MAX_CALL_DEPTH: usize = 10_000;
+
 /// The UniLang virtual machine.
 pub struct VM {
     /// Operand stack.
@@ -38,14 +43,15 @@ pub struct VM {
     functions: Vec<Function>,
     /// Class definitions (from bytecode).
     classes: Vec<ClassDef>,
-    /// Captured print output (for testing).
-    output: Vec<String>,
+    /// Captured print output — None in normal execution, Some in test/capture mode.
+    /// Never populated during normal runs so memory is not consumed by print calls.
+    output: Option<Vec<String>>,
     /// Registered builtin functions.
     builtins: HashMap<String, BuiltinFn>,
 }
 
 impl VM {
-    /// Create a new VM.
+    /// Create a new VM (normal execution — output is NOT captured).
     pub fn new() -> Self {
         Self {
             stack: Vec::new(),
@@ -53,14 +59,22 @@ impl VM {
             frames: Vec::new(),
             functions: Vec::new(),
             classes: Vec::new(),
-            output: Vec::new(),
+            output: None,
             builtins: HashMap::new(),
         }
     }
 
-    /// Return captured print output.
+    /// Create a VM that captures print output (used by tests and `execute_with_output`).
+    pub fn new_with_capture() -> Self {
+        Self {
+            output: Some(Vec::new()),
+            ..Self::new()
+        }
+    }
+
+    /// Return captured print output (empty slice if capture was not enabled).
     pub fn output(&self) -> &[String] {
-        &self.output
+        self.output.as_deref().unwrap_or(&[])
     }
 
     /// Register a native built-in function.
@@ -121,6 +135,11 @@ impl VM {
     }
 
     fn push(&mut self, val: RuntimeValue) {
+        if self.stack.len() >= MAX_STACK_DEPTH {
+            // Abort with a clear message rather than silently consuming all RAM.
+            eprintln!("runtime error: operand stack overflow (exceeded {} entries)", MAX_STACK_DEPTH);
+            std::process::exit(1);
+        }
         self.stack.push(val);
     }
 
@@ -518,6 +537,12 @@ impl VM {
                         // Remove arguments from the stack.
                         self.stack.truncate(stack_base);
 
+                        if self.frames.len() >= MAX_CALL_DEPTH {
+                            return Err(RuntimeError::new(
+                                ErrorKind::Exception,
+                                format!("maximum call depth exceeded ({})", MAX_CALL_DEPTH),
+                            ));
+                        }
                         let frame = CallFrame {
                             code: func.code.clone(),
                             ip: 0,
@@ -539,7 +564,7 @@ impl VM {
                             .collect::<Vec<_>>()
                             .join(" ");
                         println!("{}", text);
-                        self.output.push(text);
+                        if let Some(ref mut out) = self.output { out.push(text); }
                         self.push(RuntimeValue::Null);
                     }
                     RuntimeValue::NativeFunction(ref name) => {
@@ -616,8 +641,9 @@ impl VM {
             }
 
             Opcode::MakeClass(_name, _member_count) => {
-                // Class definitions are registered at bytecode load time.
-                // This opcode is a no-op at runtime for now.
+                // Class definitions are already registered in self.classes at bytecode load time.
+                // Push Null as a placeholder so StoreLocal/StoreGlobal can consume it.
+                self.push(RuntimeValue::Null);
             }
 
             Opcode::NewInstance(ref name) => {
@@ -729,7 +755,7 @@ impl VM {
                 let val = self.pop()?;
                 let text = format!("{}", val);
                 println!("{}", text);
-                self.output.push(text);
+                if let Some(ref mut out) = self.output { out.push(text); }
             }
 
             // ── Method calls ─────────────────────────────────
@@ -803,14 +829,30 @@ impl VM {
             RuntimeValue::List(items) => Self::list_method(items, name, args),
             RuntimeValue::Dict(pairs) => Self::dict_method(pairs, name, args),
             RuntimeValue::Instance(ref data) => {
+                let class_name = data.class_name.clone();
                 // Try field lookup first (e.g. System.out.println).
                 if let Some(val) = data.fields.get(name).cloned() {
-                    match val {
+                    return match val {
                         RuntimeValue::NativeFunction(fn_name) => {
                             self.call_builtin(&fn_name, args)
                         }
                         other => Ok(other),
-                    }
+                    };
+                }
+                // Field not found — look up the method in the class table.
+                let func_idx = self
+                    .classes
+                    .iter()
+                    .find(|c| c.name == class_name)
+                    .and_then(|class_def| {
+                        class_def.methods.iter().copied().find(|&idx| {
+                            self.functions
+                                .get(idx)
+                                .map_or(false, |f| f.name == name)
+                        })
+                    });
+                if let Some(idx) = func_idx {
+                    self.call_unilang_function(idx, args.to_vec())
                 } else {
                     Err(RuntimeError::attribute_error(name))
                 }
@@ -1065,7 +1107,7 @@ impl VM {
                 .collect::<Vec<_>>()
                 .join(" ");
             println!("{}", text);
-            self.output.push(text);
+            if let Some(ref mut out) = self.output { out.push(text); }
             return Ok(RuntimeValue::Null);
         }
 
@@ -1156,6 +1198,12 @@ impl VM {
         }
 
         let target_depth = self.frames.len();
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            return Err(RuntimeError::new(
+                ErrorKind::Exception,
+                format!("maximum call depth exceeded ({})", MAX_CALL_DEPTH),
+            ));
+        }
         let frame = CallFrame {
             code: func.code.clone(),
             ip: 0,
