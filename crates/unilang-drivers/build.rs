@@ -6,10 +6,10 @@
 //! Scans `src/community/` for `*.rs` files (excluding `mod.rs`) and generates
 //! two files into `$OUT_DIR`:
 //!
-//! - `community_mods.rs`    — `pub mod <name>;` declarations (included by
-//!                            `src/community/mod.rs`)
+//! - `community_mods.rs` — `pub mod <name>;` declarations
+//!   (included by `src/community/mod.rs`)
 //! - `community_drivers.rs` — `register_community_drivers` function and helpers
-//!                            (included by `src/lib.rs`)
+//!   (included by `src/lib.rs`)
 
 use std::fs;
 use std::path::Path;
