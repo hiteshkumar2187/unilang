@@ -213,10 +213,7 @@ impl LanguageServer for Backend {
         Ok(definition::find_definition(&text, position, &uri))
     }
 
-    async fn formatting(
-        &self,
-        params: DocumentFormattingParams,
-    ) -> Result<Option<Vec<TextEdit>>> {
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
 
         let docs = self.documents.read().await;

@@ -71,9 +71,8 @@ fn find_declaration_hover(source: &str, word: &str) -> Option<String> {
         if trimmed.starts_with("class ") {
             let rest = trimmed[6..].trim_start();
             if rest.starts_with(word)
-                && rest[word.len()..].starts_with(|c: char| {
-                    c == '(' || c == ':' || c == ' ' || c == '{'
-                })
+                && rest[word.len()..]
+                    .starts_with(|c: char| c == '(' || c == ':' || c == ' ' || c == '{')
             {
                 return Some(format!(
                     "**{}** — class declared on line {}\n\n```\n{}\n```",
@@ -86,9 +85,7 @@ fn find_declaration_hover(source: &str, word: &str) -> Option<String> {
         for prefix in &["val ", "var ", "let "] {
             if trimmed.starts_with(prefix) {
                 let rest = trimmed[prefix.len()..].trim_start();
-                if rest.starts_with(word)
-                    && rest[word.len()..].trim_start().starts_with('=')
-                {
+                if rest.starts_with(word) && rest[word.len()..].trim_start().starts_with('=') {
                     return Some(format!(
                         "**{}** — declared on line {}\n\n```\n{}\n```",
                         word, line_no, trimmed

@@ -97,9 +97,7 @@ pub fn parse_toml(content: &str) -> Project {
 /// Strip surrounding `"` or `'` quotes from a string token.
 fn unquote(s: &str) -> Option<String> {
     let s = s.trim();
-    if (s.starts_with('"') && s.ends_with('"'))
-        || (s.starts_with('\'') && s.ends_with('\''))
-    {
+    if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
         Some(s[1..s.len() - 1].to_string())
     } else {
         None
@@ -197,7 +195,11 @@ pub fn cmd_lock_generate() {
 
     match std::fs::write(&lock_path, &json) {
         Ok(_) => {
-            println!("Generated {} ({} dep(s))", lock_path.display(), locked.len());
+            println!(
+                "Generated {} ({} dep(s))",
+                lock_path.display(),
+                locked.len()
+            );
             for dep in &locked {
                 println!("  {} @ {}", dep.name, dep.version);
             }

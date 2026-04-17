@@ -48,9 +48,16 @@ pub fn cmd_test(path: Option<&str>) -> i32 {
 
     let total = passed + failed;
     println!();
-    println!("{} passed, {} failed out of {} tests", passed, failed, total);
+    println!(
+        "{} passed, {} failed out of {} tests",
+        passed, failed, total
+    );
 
-    if failed > 0 { 1 } else { 0 }
+    if failed > 0 {
+        1
+    } else {
+        0
+    }
 }
 
 /// Collect `.uniL` files from the given path (file, dir, or cwd).
@@ -69,11 +76,7 @@ fn collect_files(path: Option<&str>) -> Vec<PathBuf> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .map(|x| x == "uniL")
-                    .unwrap_or(false)
+            e.file_type().is_file() && e.path().extension().map(|x| x == "uniL").unwrap_or(false)
         })
         .map(|e| e.into_path())
         .collect()

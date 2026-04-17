@@ -726,7 +726,11 @@ mod tests {
             Stmt::For(ForStmt::ForIn {
                 target: spanned(Expr::Ident("x".to_string()), 4, 5),
                 iter: spanned(range_call, 9, 19),
-                body: block_with(vec![spanned(Stmt::Expr(Expr::Ident("x".to_string())), 22, 23)]),
+                body: block_with(vec![spanned(
+                    Stmt::Expr(Expr::Ident("x".to_string())),
+                    22,
+                    23,
+                )]),
             }),
             0,
             24,

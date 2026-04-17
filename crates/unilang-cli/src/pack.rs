@@ -69,7 +69,11 @@ pub fn cmd_pack(out: Option<&str>) {
             continue;
         }
         if let Err(e) = zip.write_all(&buf) {
-            eprintln!("warning: zip write error for '{}': {}", abs_path.display(), e);
+            eprintln!(
+                "warning: zip write error for '{}': {}",
+                abs_path.display(),
+                e
+            );
             continue;
         }
         count += 1;
@@ -123,11 +127,7 @@ fn collect_pack_files(cwd: &Path) -> Vec<PathBuf> {
         }
 
         // Include only .uniL files (unilang.toml already added above).
-        if path
-            .extension()
-            .map(|x| x == "uniL")
-            .unwrap_or(false)
-        {
+        if path.extension().map(|x| x == "uniL").unwrap_or(false) {
             files.push(path);
         }
     }

@@ -64,11 +64,7 @@ fn collect_unilang_files(dir: &Path) -> Vec<PathBuf> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .map(|x| x == "uniL")
-                    .unwrap_or(false)
+            e.file_type().is_file() && e.path().extension().map(|x| x == "uniL").unwrap_or(false)
         })
         .map(|e| e.into_path())
         .collect()
@@ -91,7 +87,10 @@ fn lint_file(path: &Path, source: &str) -> (bool, bool) {
         let file = source_map.get(source_id);
         if let Some(label) = d.labels.first() {
             let lc = file.line_col(label.span.start);
-            println!("{}:{}:{}: {}: {}", path_str, lc.line, lc.col, sev, d.message);
+            println!(
+                "{}:{}:{}: {}: {}",
+                path_str, lc.line, lc.col, sev, d.message
+            );
         } else {
             println!("{}: {}: {}", path_str, sev, d.message);
         }
@@ -112,7 +111,10 @@ fn lint_file(path: &Path, source: &str) -> (bool, bool) {
             let file = source_map.get(source_id);
             if let Some(label) = d.labels.first() {
                 let lc = file.line_col(label.span.start);
-                println!("{}:{}:{}: {}: {}", path_str, lc.line, lc.col, sev, d.message);
+                println!(
+                    "{}:{}:{}: {}: {}",
+                    path_str, lc.line, lc.col, sev, d.message
+                );
             } else {
                 println!("{}: {}: {}", path_str, sev, d.message);
             }
@@ -148,8 +150,10 @@ fn lint_file(path: &Path, source: &str) -> (bool, bool) {
 
         // TODO / FIXME comments
         let upper = line.to_uppercase();
-        if upper.contains("# TODO") || upper.contains("#TODO")
-            || upper.contains("# FIXME") || upper.contains("#FIXME")
+        if upper.contains("# TODO")
+            || upper.contains("#TODO")
+            || upper.contains("# FIXME")
+            || upper.contains("#FIXME")
         {
             println!(
                 "{}:{}: hint [todo-comment]: TODO found at line {}",

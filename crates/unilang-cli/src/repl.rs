@@ -10,10 +10,7 @@ use unilang_runtime::error::ErrorKind;
 /// Entry point called from main.
 pub fn cmd_repl() {
     let version = env!("CARGO_PKG_VERSION");
-    println!(
-        "UniLang REPL v{}  (type 'exit' or Ctrl+C to quit)",
-        version
-    );
+    println!("UniLang REPL v{}  (type 'exit' or Ctrl+C to quit)", version);
 
     let stdin = io::stdin();
     let mut lines_iter = stdin.lock().lines();

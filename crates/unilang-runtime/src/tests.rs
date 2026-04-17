@@ -645,8 +645,12 @@ fn test_full_pipeline() {
 fn run_program(source: &str) -> Result<(RuntimeValue, Vec<String>), crate::error::RuntimeError> {
     use unilang_common::span::SourceId;
     let (module, _diag) = unilang_parser::parse(SourceId(0), source);
-    let bytecode = unilang_codegen::compile(&module)
-        .map_err(|_| crate::error::RuntimeError::new(crate::error::ErrorKind::Exception, "compile error".to_string()))?;
+    let bytecode = unilang_codegen::compile(&module).map_err(|_| {
+        crate::error::RuntimeError::new(
+            crate::error::ErrorKind::Exception,
+            "compile error".to_string(),
+        )
+    })?;
     let mut vm = VM::new_with_capture();
     let result = vm.run(&bytecode)?;
     let output = vm.output().to_vec();
@@ -788,11 +792,13 @@ fn e2e_float_arithmetic() {
 #[test]
 fn e2e_nested_function_calls_print() {
     // Nested print is valid, inner call result passes to outer
-    let out = run_ok(r#"
+    let out = run_ok(
+        r#"
 def add(a, b):
     return a + b
 print(add(add(1, 2), add(3, 4)))
-"#);
+"#,
+    );
     assert_eq!(out, vec!["10"]);
 }
 

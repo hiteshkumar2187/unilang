@@ -126,7 +126,7 @@ impl UniLangDriver for PrometheusDriver {
 
     #[cfg(feature = "prometheus-driver")]
     fn register(&self, vm: &mut VM) {
-        use prometheus::{Opts, HistogramOpts};
+        use prometheus::{HistogramOpts, Opts};
 
         macro_rules! arc {
             () => {

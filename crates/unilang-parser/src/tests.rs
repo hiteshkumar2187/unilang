@@ -100,7 +100,10 @@ fn test_python_class_empty() {
     match &m.statements[0].node {
         Stmt::ClassDecl(c) => {
             assert_eq!(c.name.node, "Foo");
-            assert_eq!(c.syntax, unilang_common::syntax_origin::SyntaxOrigin::Python);
+            assert_eq!(
+                c.syntax,
+                unilang_common::syntax_origin::SyntaxOrigin::Python
+            );
         }
         other => panic!("expected ClassDecl, got {:?}", other),
     }
@@ -134,7 +137,9 @@ fn test_java_class_empty() {
 
 #[test]
 fn test_java_class_with_method() {
-    let m = parse_ok("public class Calculator {\n    public int add(int a, int b) { return a + b; }\n}");
+    let m = parse_ok(
+        "public class Calculator {\n    public int add(int a, int b) { return a + b; }\n}",
+    );
     match &m.statements[0].node {
         Stmt::ClassDecl(c) => {
             assert_eq!(c.name.node, "Calculator");
@@ -331,15 +336,13 @@ fn test_import_with_alias() {
 fn test_return_with_value() {
     let m = parse_ok("def f():\n    return 42");
     match &m.statements[0].node {
-        Stmt::FunctionDecl(f) => {
-            match &f.body.statements[0].node {
-                Stmt::Return(Some(expr)) => match &expr.node {
-                    Expr::IntLit(n) => assert_eq!(*n, 42),
-                    other => panic!("expected IntLit, got {:?}", other),
-                },
-                other => panic!("expected Return(Some), got {:?}", other),
-            }
-        }
+        Stmt::FunctionDecl(f) => match &f.body.statements[0].node {
+            Stmt::Return(Some(expr)) => match &expr.node {
+                Expr::IntLit(n) => assert_eq!(*n, 42),
+                other => panic!("expected IntLit, got {:?}", other),
+            },
+            other => panic!("expected Return(Some), got {:?}", other),
+        },
         other => panic!("expected FunctionDecl, got {:?}", other),
     }
 }
@@ -348,12 +351,10 @@ fn test_return_with_value() {
 fn test_return_no_value() {
     let m = parse_ok("def f():\n    return");
     match &m.statements[0].node {
-        Stmt::FunctionDecl(f) => {
-            match &f.body.statements[0].node {
-                Stmt::Return(None) => {}
-                other => panic!("expected Return(None), got {:?}", other),
-            }
-        }
+        Stmt::FunctionDecl(f) => match &f.body.statements[0].node {
+            Stmt::Return(None) => {}
+            other => panic!("expected Return(None), got {:?}", other),
+        },
         other => panic!("expected FunctionDecl, got {:?}", other),
     }
 }

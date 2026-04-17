@@ -44,9 +44,8 @@ pub fn find_definition(
         if trimmed.starts_with("class ") {
             let rest = trimmed[6..].trim_start();
             if rest.starts_with(word.as_str())
-                && rest[word.len()..].starts_with(|c: char| {
-                    c == '(' || c == ':' || c == ' ' || c == '{'
-                })
+                && rest[word.len()..]
+                    .starts_with(|c: char| c == '(' || c == ':' || c == ' ' || c == '{')
             {
                 let col = indent + 6; // "class " is 6 chars
                 return Some(GotoDefinitionResponse::Scalar(make_location(

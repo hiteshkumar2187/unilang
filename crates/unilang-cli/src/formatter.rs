@@ -30,11 +30,7 @@ fn collect_unilang_files(dir: &Path) -> Vec<PathBuf> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .map(|x| x == "uniL")
-                    .unwrap_or(false)
+            e.file_type().is_file() && e.path().extension().map(|x| x == "uniL").unwrap_or(false)
         })
         .map(|e| e.into_path())
         .collect()
