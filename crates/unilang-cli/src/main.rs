@@ -75,6 +75,26 @@ enum Commands {
         #[arg(short, long)]
         yes: bool,
     },
+    /// Driver management commands.
+    Driver {
+        #[command(subcommand)]
+        action: DriverAction,
+    },
+}
+
+/// Sub-commands for `unilang driver`.
+#[derive(Subcommand)]
+enum DriverAction {
+    /// List all registered drivers with their metadata and exported functions.
+    List,
+    /// Generate a new community driver template file.
+    New {
+        /// Driver name (e.g. "cassandra" generates cassandra.rs).
+        name: String,
+        /// Output directory (default: current directory).
+        #[arg(long)]
+        out: Option<String>,
+    },
 }
 
 fn main() {
@@ -94,6 +114,10 @@ fn main() {
             no_git,
             yes,
         } => init::cmd_new(name, r#type, deps, path, no_git, yes),
+        Commands::Driver { action } => match action {
+            DriverAction::List => cmd_driver_list(),
+            DriverAction::New { name, out } => cmd_driver_new(&name, out.as_deref()),
+        },
     }
 }
 
@@ -172,8 +196,12 @@ fn cmd_check(path: &str) {
         process::exit(1);
     }
 
+    // Collect driver function names so the semantic analyzer recognises them.
+    let driver_funcs = unilang_drivers::default_registry().all_function_names();
+
     // Semantic analysis
-    let (_result, sem_diags) = unilang_semantic::analyze(&module);
+    let (_result, sem_diags) =
+        unilang_semantic::analyze_with_extra_builtins(&module, &driver_funcs);
 
     if sem_diags.has_errors() {
         print_diagnostics(path, &source_map, source_id, &sem_diags);
@@ -268,8 +296,11 @@ fn cmd_run(path: &str) {
         process::exit(1);
     }
 
-    // 2. Semantic analysis
-    let (_result, sem_diags) = unilang_semantic::analyze(&module);
+    // 2. Semantic analysis — inject driver function names so community-driver
+    //    calls are not flagged as "undefined variable".
+    let driver_funcs = unilang_drivers::default_registry().all_function_names();
+    let (_result, sem_diags) =
+        unilang_semantic::analyze_with_extra_builtins(&module, &driver_funcs);
 
     // Print warnings
     for d in sem_diags.diagnostics() {
@@ -318,6 +349,159 @@ fn cmd_run(path: &str) {
                 eprintln!("runtime error: {}", e.message);
                 process::exit(1);
             }
+        }
+    }
+}
+
+// ── Driver management commands ────────────────────────────────────────────────
+
+fn cmd_driver_list() {
+    let registry = unilang_drivers::default_registry();
+
+    if registry.drivers().is_empty() {
+        println!("No drivers registered.");
+        return;
+    }
+
+    println!(
+        "{:<22} {:<10} {:<20} FUNCTIONS",
+        "NAME", "VERSION", "CATEGORY"
+    );
+    println!("{}", "-".repeat(90));
+
+    for driver in registry.drivers() {
+        let funcs = driver.exported_functions();
+        let func_count = funcs.len();
+        let func_list = funcs.join(", ");
+        println!(
+            "{:<22} {:<10} {:<20} ({}) {}",
+            driver.name(),
+            driver.version(),
+            format!("{:?}", driver.category()),
+            func_count,
+            func_list
+        );
+    }
+
+    println!();
+    println!("Total: {} driver(s) registered.", registry.drivers().len());
+}
+
+fn cmd_driver_new(name: &str, out: Option<&str>) {
+    // Capitalize first letter for the struct name.
+    let struct_name = {
+        let mut chars = name.chars();
+        match chars.next() {
+            None => String::new(),
+            Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        }
+    };
+
+    let template = format!(
+        r#"// TEMPLATE: {name} driver for UniLang
+// Copy this file to crates/unilang-drivers/src/community/{name}.rs
+// Then run `cargo build` — the driver will be auto-discovered.
+//
+// No other changes needed!
+
+use std::sync::{{Arc, Mutex}};
+use unilang_runtime::error::RuntimeError;
+use unilang_runtime::value::RuntimeValue;
+use unilang_runtime::vm::VM;
+use crate::{{DriverCategory, UniLangDriver}};
+
+pub struct {struct_name} {{
+    // Add your connection state here, wrapped in Arc<Mutex<Option<...>>>
+    // so it can be safely shared across multiple registered closures.
+    _state: Arc<Mutex<Option<()>>>,
+}}
+
+impl {struct_name} {{
+    pub fn new() -> Self {{
+        Self {{ _state: Arc::new(Mutex::new(None)) }}
+    }}
+}}
+
+impl Default for {struct_name} {{
+    fn default() -> Self {{ Self::new() }}
+}}
+
+impl UniLangDriver for {struct_name} {{
+    fn name(&self)        -> &str {{ "{name}" }}
+    fn version(&self)     -> &str {{ "0.1.0" }}
+    fn description(&self) -> &str {{ "{struct_name} driver for UniLang" }}
+    fn category(&self)    -> DriverCategory {{ DriverCategory::Other }}
+
+    fn exported_functions(&self) -> &'static [&'static str] {{
+        &["{name}_connect", "{name}_query", "{name}_close"]
+    }}
+
+    fn register(&self, vm: &mut VM) {{
+        let state = Arc::clone(&self._state);
+        vm.register_builtin("{name}_connect", move |args| {{
+            let _url = match args.first() {{
+                Some(RuntimeValue::String(s)) => s.clone(),
+                _ => return Err(RuntimeError::type_error(
+                    "{name}_connect(url): expected string".to_string()
+                )),
+            }};
+            // TODO: open connection, store in state
+            *state.lock().unwrap() = Some(());
+            Ok(RuntimeValue::Bool(true))
+        }});
+
+        let state = Arc::clone(&self._state);
+        vm.register_builtin("{name}_query", move |args| {{
+            let guard = state.lock().unwrap();
+            if guard.is_none() {{
+                return Err(RuntimeError::type_error(
+                    "{name}_query: not connected — call {name}_connect first".to_string()
+                ));
+            }}
+            let _sql = match args.first() {{
+                Some(RuntimeValue::String(s)) => s.clone(),
+                _ => return Err(RuntimeError::type_error(
+                    "{name}_query(sql): expected string".to_string()
+                )),
+            }};
+            // TODO: execute query, convert rows to Vec<RuntimeValue>
+            Ok(RuntimeValue::List(vec![]))
+        }});
+
+        let state = Arc::clone(&self._state);
+        vm.register_builtin("{name}_close", move |_args| {{
+            *state.lock().unwrap() = None;
+            Ok(RuntimeValue::Bool(true))
+        }});
+    }}
+}}
+"#,
+        name = name,
+        struct_name = struct_name,
+    );
+
+    let out_dir = out.unwrap_or(".");
+    let file_path = std::path::Path::new(out_dir).join(format!("{}.rs", name));
+
+    match fs::write(&file_path, &template) {
+        Ok(_) => {
+            println!("Created driver template: {}", file_path.display());
+            println!();
+            println!("Next steps:");
+            println!(
+                "  1. Move the file to crates/unilang-drivers/src/community/{}.rs",
+                name
+            );
+            println!("  2. Implement the TODO sections");
+            println!("  3. Run `cargo build` — the driver is auto-discovered");
+            println!(
+                "  4. Test with a .uniL script calling {}_connect / {}_query / {}_close",
+                name, name, name
+            );
+        }
+        Err(e) => {
+            eprintln!("error: cannot write '{}': {}", file_path.display(), e);
+            process::exit(1);
         }
     }
 }

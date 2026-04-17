@@ -31,6 +31,8 @@ pub struct Analyzer {
     source_id: SourceId,
     symbols_defined: usize,
     scopes_created: usize,
+    /// Extra builtin names injected at startup (e.g. from community drivers).
+    extra_builtins: Vec<String>,
 }
 
 impl Analyzer {
@@ -41,6 +43,24 @@ impl Analyzer {
             source_id,
             symbols_defined: 0,
             scopes_created: 1, // module scope
+            extra_builtins: Vec::new(),
+        }
+    }
+
+    /// Create an analyzer pre-loaded with additional builtin names sourced from
+    /// dynamically registered drivers (e.g. community drivers).
+    ///
+    /// The names are injected into the prelude alongside the static
+    /// `PRELUDE_FUNCS` list, so scripts that call community-driver functions
+    /// do not receive "undefined variable" diagnostics.
+    pub fn with_extra_builtins(source_id: SourceId, extra: &[String]) -> Self {
+        Self {
+            scopes: ScopeStack::new(),
+            diagnostics: DiagnosticBag::new(),
+            source_id,
+            symbols_defined: 0,
+            scopes_created: 1, // module scope
+            extra_builtins: extra.to_vec(),
         }
     }
 
@@ -341,6 +361,20 @@ impl Analyzer {
             };
             self.define_symbol(name, symbol, prelude_span);
         }
+        // Inject any extra builtins provided at construction time (e.g. from
+        // community drivers discovered at build time or at runtime).
+        let extra = std::mem::take(&mut self.extra_builtins);
+        for name in &extra {
+            let symbol = Symbol {
+                name: name.clone(),
+                ty: Type::Dynamic,
+                kind: SymbolKind::Function,
+                mutable: true,
+                span: prelude_span,
+            };
+            self.define_symbol(name, symbol, prelude_span);
+        }
+        self.extra_builtins = extra;
         // Java-style `System.out.println(...)` is implemented as a VM facade, not real JVM.
         for name in &["System", "None", "True", "False"] {
             let sym = Symbol {

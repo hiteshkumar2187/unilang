@@ -24,6 +24,19 @@ pub fn analyze(module: &Module) -> (AnalysisResult, DiagnosticBag) {
     analyzer.analyze(module)
 }
 
+/// Like [`analyze`], but also injects `extra_builtins` into the prelude so
+/// that community-driver function names are recognised during analysis.
+///
+/// Pass the result of `DriverRegistry::all_function_names()` here to avoid
+/// false "undefined variable" diagnostics for driver functions.
+pub fn analyze_with_extra_builtins(
+    module: &Module,
+    extra_builtins: &[String],
+) -> (AnalysisResult, DiagnosticBag) {
+    let analyzer = analyzer::Analyzer::with_extra_builtins(module.source_id, extra_builtins);
+    analyzer.analyze(module)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
