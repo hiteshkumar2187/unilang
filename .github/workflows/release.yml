@@ -179,7 +179,7 @@ jobs:
           "$hash  $artifact.zip" | Out-File -Encoding ASCII dist/$artifact.zip.sha256
 
       - name: Upload edition artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unilang-${{ matrix.edition }}-${{ matrix.target_suffix }}
           path: dist/unilang-${{ matrix.edition }}-${{ matrix.target_suffix }}.*
@@ -268,7 +268,7 @@ jobs:
           "$hash  $artifact" | Out-File -Encoding ASCII dist/$artifact.sha256
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: installer-${{ matrix.target_suffix }}
           path: dist/unilang-installer-${{ matrix.target_suffix }}*
@@ -281,7 +281,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
 
@@ -297,7 +297,7 @@ jobs:
           cp *.vsix ../../dist/unilang-vscode.vsix
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unilang-vscode
           path: dist/unilang-vscode.vsix
@@ -316,7 +316,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.5'
 
@@ -331,7 +331,7 @@ jobs:
           cp tools/jetbrains-plugin/build/distributions/*.zip dist/unilang-jetbrains.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unilang-jetbrains
           path: dist/unilang-jetbrains.zip
@@ -343,7 +343,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - name: Install and build
@@ -362,13 +362,13 @@ jobs:
             echo "Signed: $APP_PATH"
           fi
       - name: Upload DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unilang-ide-macos
           path: tools/unilang-ide/dist/*.dmg
           if-no-files-found: warn
       - name: Upload ZIP (fallback)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unilang-ide-macos-zip
           path: tools/unilang-ide/dist/*.zip
@@ -378,7 +378,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - name: Install and build
@@ -387,7 +387,7 @@ jobs:
           npm install
           npm run build:linux
       - name: Upload AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unilang-ide-linux
           path: tools/unilang-ide/dist/*.AppImage
@@ -398,7 +398,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - name: Install and build
@@ -408,7 +408,7 @@ jobs:
           npm install
           npm run build:win
       - name: Upload EXE
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unilang-ide-windows
           path: tools/unilang-ide/dist/*.exe
@@ -435,7 +435,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: release-artifacts
         continue-on-error: true

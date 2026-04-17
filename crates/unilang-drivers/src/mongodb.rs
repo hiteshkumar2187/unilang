@@ -110,13 +110,11 @@ impl UniLangDriver for MongoDriver {
                 let (client, db_name) = guard.as_ref().ok_or_else(|| no_conn("mongo_find"))?;
                 let coll: mongodb::sync::Collection<mongodb::bson::Document> =
                     client.database(db_name).collection(&coll_name);
-                // mongodb 3.x uses builder pattern: .filter().run()
-                let cursor = if let Some(f) = filter {
-                    coll.find().filter(f).run()
-                } else {
-                    coll.find().run()
-                }
-                .map_err(|e| RuntimeError::type_error(format!("mongo_find: {}", e)))?;
+                // mongodb 3.x: find(filter) takes a required Document arg; empty = match all
+                let cursor = coll
+                    .find(filter.unwrap_or_default())
+                    .run()
+                    .map_err(|e| RuntimeError::type_error(format!("mongo_find: {}", e)))?;
                 let docs: Vec<RuntimeValue> = cursor
                     .filter_map(|r| r.ok())
                     .map(|doc| bson_doc_to_runtime(&doc))
@@ -135,12 +133,10 @@ impl UniLangDriver for MongoDriver {
                 let (client, db_name) = guard.as_ref().ok_or_else(|| no_conn("mongo_find_one"))?;
                 let coll: mongodb::sync::Collection<mongodb::bson::Document> =
                     client.database(db_name).collection(&coll_name);
-                let doc = if let Some(f) = filter {
-                    coll.find_one().filter(f).run()
-                } else {
-                    coll.find_one().run()
-                }
-                .map_err(|e| RuntimeError::type_error(format!("mongo_find_one: {}", e)))?;
+                let doc = coll
+                    .find_one(filter.unwrap_or_default())
+                    .run()
+                    .map_err(|e| RuntimeError::type_error(format!("mongo_find_one: {}", e)))?;
                 Ok(match doc {
                     Some(d) => bson_doc_to_runtime(&d),
                     None => RuntimeValue::Null,
@@ -223,12 +219,10 @@ impl UniLangDriver for MongoDriver {
                 let (client, db_name) = guard.as_ref().ok_or_else(|| no_conn("mongo_count"))?;
                 let coll: mongodb::sync::Collection<mongodb::bson::Document> =
                     client.database(db_name).collection(&coll_name);
-                let count = if let Some(f) = filter {
-                    coll.count_documents().filter(f).run()
-                } else {
-                    coll.count_documents().run()
-                }
-                .map_err(|e| RuntimeError::type_error(format!("mongo_count: {}", e)))?;
+                let count = coll
+                    .count_documents(filter.unwrap_or_default())
+                    .run()
+                    .map_err(|e| RuntimeError::type_error(format!("mongo_count: {}", e)))?;
                 Ok(RuntimeValue::Int(count as i64))
             });
         }

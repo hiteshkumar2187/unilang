@@ -268,6 +268,7 @@ fn smtp_write<W: Write>(w: &mut W, cmd: &str) -> Result<(), String> {
 }
 
 /// Read a (potentially multi-line) SMTP response from a `BufRead` source.
+#[allow(unused_assignments)] // initial value is a required sentinel; always overwritten in loop
 fn smtp_read_multiline<R: BufRead>(r: &mut R, expected: u32) -> Result<String, String> {
     let mut last_text = String::new();
     loop {
