@@ -10,6 +10,8 @@
 //! - `unilang compile <file>` — lex, parse, compile, and print bytecode disassembly
 //! - `unilang run <file>`     — full pipeline: lex, parse, analyze, compile, execute
 
+mod init;
+
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::process;
@@ -53,6 +55,26 @@ enum Commands {
         /// Path to the .uniL source file.
         file: String,
     },
+    /// Create a new UniLang project (interactive wizard or flags).
+    New {
+        /// Project name.
+        name: Option<String>,
+        /// Project type: web | app | cli.
+        #[arg(long)]
+        r#type: Option<String>,
+        /// Comma-separated drivers: sqlite,redis,mysql,...
+        #[arg(long)]
+        deps: Option<String>,
+        /// Parent directory (default: current dir).
+        #[arg(long)]
+        path: Option<String>,
+        /// Skip git init.
+        #[arg(long)]
+        no_git: bool,
+        /// Accept defaults, skip wizard.
+        #[arg(short, long)]
+        yes: bool,
+    },
 }
 
 fn main() {
@@ -64,6 +86,14 @@ fn main() {
         Commands::Check { file } => cmd_check(&file),
         Commands::Compile { file } => cmd_compile(&file),
         Commands::Run { file } => cmd_run(&file),
+        Commands::New {
+            name,
+            r#type,
+            deps,
+            path,
+            no_git,
+            yes,
+        } => init::cmd_new(name, r#type, deps, path, no_git, yes),
     }
 }
 
