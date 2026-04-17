@@ -20,3 +20,10 @@ unilang-runtime = { path = "../unilang-runtime" }
 unilang-stdlib = { path = "../unilang-stdlib" }
 unilang-drivers = { path = "../unilang-drivers" }
 clap.workspace = true
+
+# ── Edition feature forwarding ────────────────────────────────────────────────
+# Build with `--features lite` or `--features full` to select a release edition.
+# These simply activate the matching feature preset in unilang-drivers.
+[features]
+lite = ["unilang-drivers/lite"]
+full = ["unilang-drivers/full"]

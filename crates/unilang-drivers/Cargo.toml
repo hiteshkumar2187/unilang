@@ -89,7 +89,39 @@ nats-driver        = ["dep:nats"]
 prometheus-driver  = ["dep:prometheus"]
 websocket          = ["dep:tungstenite"]
 
-# Enable every bundled driver at once
+# ── Edition presets ───────────────────────────────────────────────────────────
+# unilang-lite: the 6 drivers included in the Lite release. Lightweight,
+# zero-config defaults — everything a typical backend developer needs.
+lite = [
+    "sqlite",
+    "redis-driver",
+    "kafka",
+    "elasticsearch-driver",
+    "smtp",
+    "mongodb-driver",
+]
+
+# unilang-full: every driver compiled in. Equivalent to all-drivers.
+# Used by the Full release and `unilang-installer --full`.
+full = [
+    "sqlite",
+    "mysql-driver",
+    "postgres-driver",
+    "mongodb-driver",
+    "redis-driver",
+    "memcached-driver",
+    "elasticsearch-driver",
+    "kafka",
+    "smtp",
+    "influxdb",
+    "s3",
+    "rabbitmq",
+    "nats-driver",
+    "prometheus-driver",
+    "websocket",
+]
+
+# Enable every bundled driver at once (alias for full)
 all-drivers = [
     "sqlite",
     "mysql-driver",

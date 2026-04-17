@@ -197,6 +197,9 @@ pub mod prometheus_driver;
 #[cfg(feature = "websocket")]
 pub mod websocket;
 
+// ── External (dynamic) driver loading — north star ───────────────────────────
+pub mod external;
+
 // ── Convenience: build the default registry ──────────────────────────────────
 
 /// Build a [`DriverRegistry`] pre-populated with every driver that was

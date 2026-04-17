@@ -1,0 +1,30 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.
+
+[package]
+name = "unilang-installer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Interactive installer wizard for UniLang"
+
+[[bin]]
+name = "unilang-installer"
+path = "src/main.rs"
+
+[dependencies]
+dialoguer = { version = "0.11", features = ["history"] }
+console = "0.15"
+indicatif = "0.17"
+ureq = { version = "2", features = ["json"] }
+flate2 = "1"
+tar = "0.4"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Pin tempfile to 3.13 to avoid pulling in getrandom 0.4 (requires Cargo 1.85 / edition2024).
+# tempfile 3.13 is the highest version that does not add a direct getrandom dependency.
+tempfile = "=3.13"
