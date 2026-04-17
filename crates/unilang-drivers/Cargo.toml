@@ -51,6 +51,9 @@ tokio          = { version = "1", features = ["rt", "rt-multi-thread"], optional
 futures-lite   = { version = "2",                                       optional = true }
 # nats 0.24 provides a blocking synchronous client API for NATS messaging
 nats      = { version = "0.26",                                    optional = true }
+# openssl vendored: compile OpenSSL from source — avoids needing a system install on
+# Windows CI when nats or lapin pull in native-tls / openssl-sys transitively.
+openssl   = { version = "0.10", features = ["vendored"],            optional = true }
 
 # ── Metrics ───────────────────────────────────────────────────────
 prometheus = { version = "0.13", default-features = false,         optional = true }
@@ -85,8 +88,8 @@ kafka              = []
 smtp               = ["dep:rustls", "dep:rustls-pki-types", "dep:webpki-roots", "dep:base64"]
 influxdb           = ["dep:ureq"]
 s3                 = ["dep:ureq", "dep:sha2", "dep:hmac", "dep:hex"]
-rabbitmq           = ["dep:lapin", "dep:tokio", "dep:futures-lite"]
-nats-driver        = ["dep:nats"]
+rabbitmq           = ["dep:lapin", "dep:tokio", "dep:futures-lite", "dep:openssl"]
+nats-driver        = ["dep:nats", "dep:openssl"]
 prometheus-driver  = ["dep:prometheus"]
 websocket          = ["dep:tungstenite"]
 
