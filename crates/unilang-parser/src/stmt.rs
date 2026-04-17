@@ -592,10 +592,7 @@ fn has_block_after_paren_group(p: &Parser<'_>, lparen_offset: usize) -> bool {
                 if depth == 1 {
                     // Skip newlines/semicolons between `)` and `{`
                     let mut j = i + 1;
-                    while matches!(
-                        p.peek_nth(j),
-                        TokenKind::Newline | TokenKind::Semicolon
-                    ) {
+                    while matches!(p.peek_nth(j), TokenKind::Newline | TokenKind::Semicolon) {
                         j += 1;
                     }
                     return p.peek_nth(j) == TokenKind::LBrace;
