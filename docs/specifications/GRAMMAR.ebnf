@@ -1,0 +1,698 @@
+(*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *)
+
+(*
+ * UniLang Formal Grammar — EBNF
+ * ==============================
+ *
+ * UniLang is a unified language that merges Python and Java syntax into a
+ * single coherent grammar.  Programs may freely mix constructs from both
+ * languages within the same source file.
+ *
+ * NOTATION CONVENTIONS
+ * --------------------
+ *   rule_name ::= ...          production rule definition
+ *   "terminal"                 literal token (keyword, punctuation)
+ *   TERMINAL_NAME              named terminal token class (defined in the
+ *                              Lexical section at the bottom of this file)
+ *   ( A B )                    grouping
+ *   [ A ]                      optional (zero or one occurrence)
+ *   { A }                      zero or more occurrences
+ *   A | B                      ordered alternative (first match wins)
+ *   (* comment *)              grammar comment
+ *
+ * BLOCK SYNTAX
+ * ------------
+ * UniLang supports two block delimiters:
+ *   Python-style  — a colon ":" followed by a NEWLINE, INDENT, statements,
+ *                   DEDENT  (produced by the indentation-aware lexer).
+ *   Java-style    — opening brace "{" and closing brace "}".
+ * The metavariable `block` expands to either form wherever a block is
+ * expected.  Both styles are accepted everywhere.
+ *
+ * STATEMENT TERMINATORS
+ * ---------------------
+ * Statements may be terminated by a NEWLINE (Python) or a semicolon ";"
+ * (Java).  The lexer performs automatic semicolon insertion (ASI): a
+ * significant NEWLINE is emitted only when the preceding token belongs to
+ * the set of tokens that can legally end a statement.
+ *
+ * SOURCE ORIGIN ANNOTATIONS  [Python] / [Java] / [UniLang]
+ * ---------------------------------------------------------
+ * Rules that originate exclusively in one language are annotated inline.
+ * Rules without annotation are accepted regardless of syntax origin.
+ *)
+
+(* ================================================================
+   TOP LEVEL
+   ================================================================ *)
+
+module ::= { statement } EOF
+
+(* ================================================================
+   STATEMENTS
+   ================================================================ *)
+
+statement ::= decorated_stmt
+            | import_stmt
+            | function_decl
+            | class_decl
+            | if_stmt
+            | for_stmt
+            | while_stmt
+            | do_while_stmt          (* [Java] *)
+            | try_stmt
+            | with_stmt              (* [Python] *)
+            | return_stmt
+            | raise_stmt             (* [Python] *)
+            | throw_stmt             (* [Java] *)
+            | break_stmt
+            | continue_stmt
+            | pass_stmt              (* [Python] *)
+            | assert_stmt
+            | var_decl_stmt
+            | java_typed_decl        (* [Java] inferred from lookahead *)
+            | expr_stmt
+
+(* A statement ending with a block (brace or indent) does not need an
+   explicit terminator.  All other statements are terminated by NEWLINE
+   or ";". *)
+stmt_terminator ::= NEWLINE | ";"
+
+
+(* ----------------------------------------------------------------
+   Decorated statement — @decorator … def/class
+   ---------------------------------------------------------------- *)
+
+decorated_stmt ::= { decorator } [ modifier_list ] ( function_decl | class_decl )
+
+decorator ::= "@" IDENTIFIER [ "(" [ argument_list ] ")" ] NEWLINE
+
+
+(* ----------------------------------------------------------------
+   Modifiers (Java-style visibility and method/field modifiers)
+   ---------------------------------------------------------------- *)
+
+modifier_list ::= { modifier }
+
+modifier ::= visibility_modifier
+           | "static"
+           | "final"
+           | "abstract"
+           | "native"
+           | "synchronized"
+           | "volatile"
+           | "transient"
+
+visibility_modifier ::= "public" | "private" | "protected"
+
+
+(* ----------------------------------------------------------------
+   Import statements
+   ---------------------------------------------------------------- *)
+
+import_stmt ::= simple_import
+              | from_import
+              | static_import
+
+(* import foo.bar [as baz] *)
+simple_import ::= "import" dotted_name [ "as" IDENTIFIER ] stmt_terminator
+
+(* from foo.bar import x, y [as z] *)
+(* from foo.bar import * *)
+from_import ::= "from" dotted_name "import"
+                ( "*" | import_alias_list ) stmt_terminator
+
+import_alias_list ::= import_alias { "," import_alias }
+
+import_alias ::= IDENTIFIER [ "as" IDENTIFIER ]
+
+(* import static foo.bar.Baz  [Java] *)
+static_import ::= "import" "static" dotted_name stmt_terminator
+
+dotted_name ::= IDENTIFIER { "." IDENTIFIER }
+
+
+(* ----------------------------------------------------------------
+   Variable declarations
+   ---------------------------------------------------------------- *)
+
+(* var / val / const — UniLang keywords *)
+var_decl_stmt ::= ( "var" | "val" | "const" ) IDENTIFIER
+                  [ ":" type_expr ]
+                  [ "=" expression ]
+                  stmt_terminator
+
+(* Java-style typed variable: int x = 5  (inferred from lookahead) *)
+java_typed_decl ::= type_expr IDENTIFIER
+                    ( "=" expression | (* empty *) )
+                    stmt_terminator
+
+
+(* ----------------------------------------------------------------
+   Function declarations
+   ---------------------------------------------------------------- *)
+
+(* Python-style:  [async] def name(params) [-> ReturnType] block *)
+function_decl ::= python_function_decl
+                | java_function_decl
+
+python_function_decl ::= [ "async" ] "def" IDENTIFIER
+                         "(" [ param_list ] ")"
+                         [ "->" type_expr ]
+                         block
+
+(* Java-style:  ReturnType name(typed_params) block *)
+(* Also used inside a class body as a method declaration. *)
+java_function_decl ::= [ modifier_list ] type_expr IDENTIFIER
+                       "(" [ typed_param_list ] ")"
+                       block
+
+(* Java-style constructor inside a class body:
+   ClassName(params) { body }  — no return type *)
+constructor_decl ::= IDENTIFIER "(" [ param_list ] ")" brace_block
+
+
+(* ----------------------------------------------------------------
+   Parameter lists
+   ---------------------------------------------------------------- *)
+
+(* Python-style parameter list — may include type annotations and defaults *)
+param_list ::= param { "," param }
+
+param ::= [ "*" | "**" ] IDENTIFIER [ ":" type_expr ] [ "=" expression ]
+
+(* Java-style typed parameter list — type precedes name, no defaults *)
+typed_param_list ::= typed_param { "," typed_param }
+
+typed_param ::= type_expr IDENTIFIER
+
+
+(* ----------------------------------------------------------------
+   Class declarations
+   ---------------------------------------------------------------- *)
+
+class_decl ::= [ modifier_list ] "class" IDENTIFIER
+               [ "<" type_param_list ">" ]
+               [ python_bases ]
+               [ java_extends ]
+               [ java_implements ]
+               class_body
+
+(* Python-style base list: class Foo(Base1, Base2): *)
+python_bases ::= "(" [ type_expr { "," type_expr } ] ")"
+
+(* Java-style: extends SingleBase *)
+java_extends ::= "extends" type_expr
+
+(* Java-style: implements Iface1, Iface2, ... *)
+java_implements ::= "implements" type_expr { "," type_expr }
+
+(* Generic type parameters: class Foo<T, U> *)
+type_param_list ::= type_expr { "," type_expr }
+
+class_body ::= java_class_body | python_class_body
+
+java_class_body  ::= "{" { class_member } "}"
+python_class_body ::= ":" NEWLINE INDENT { class_member } DEDENT
+
+(* A class member may be a constructor, method, or any other statement. *)
+class_member ::= constructor_decl
+               | statement
+
+
+(* ----------------------------------------------------------------
+   Blocks
+   ---------------------------------------------------------------- *)
+
+block ::= brace_block | indent_block
+
+brace_block  ::= "{" { statement } "}"
+
+indent_block ::= ":" NEWLINE INDENT { statement } DEDENT
+               | ":" statement        (* single-line form *)
+
+
+(* ----------------------------------------------------------------
+   If / elif / else
+   ---------------------------------------------------------------- *)
+
+if_stmt ::= "if" [ "(" ] expression [ ")" ] block
+            { "elif" expression block }
+            [ "else" ( if_stmt | block ) ]
+            (* Note: "else if" is treated as an implicit elif clause. *)
+
+
+(* ----------------------------------------------------------------
+   For loops
+   ---------------------------------------------------------------- *)
+
+for_stmt ::= for_in_stmt | for_classic_stmt
+
+(* Python-style: for target in iterable: *)
+for_in_stmt ::= "for" expression "in" expression block
+
+(* Java-style: for (init; cond; update) { } *)
+for_classic_stmt ::= "for" "("
+                     [ statement ] ";"
+                     [ expression ] ";"
+                     [ expression ]
+                     ")" block
+
+
+(* ----------------------------------------------------------------
+   While / do-while loops
+   ---------------------------------------------------------------- *)
+
+while_stmt ::= "while" [ "(" ] expression [ ")" ] block
+
+(* Java only *)
+do_while_stmt ::= "do" block "while" [ "(" ] expression [ ")" ] stmt_terminator
+
+
+(* ----------------------------------------------------------------
+   Try / except / catch / finally
+   ---------------------------------------------------------------- *)
+
+try_stmt ::= "try" block
+             { except_clause }
+             { catch_clause }
+             [ finally_clause ]
+
+(* Python-style: except [ExType [as name]]: block *)
+except_clause ::= "except" [ type_expr [ "as" IDENTIFIER ] ] block
+
+(* Java-style: catch (ExType name) { block } *)
+catch_clause ::= "catch" "(" [ type_expr ] [ IDENTIFIER ] ")" block
+
+finally_clause ::= "finally" block
+
+
+(* ----------------------------------------------------------------
+   With statement  [Python]
+   ---------------------------------------------------------------- *)
+
+with_stmt ::= "with" with_item { "," with_item } block
+
+with_item ::= expression [ "as" IDENTIFIER ]
+
+
+(* ----------------------------------------------------------------
+   Simple control-flow statements
+   ---------------------------------------------------------------- *)
+
+return_stmt   ::= "return" [ expression ] stmt_terminator
+
+raise_stmt    ::= "raise" expression stmt_terminator     (* [Python] *)
+
+throw_stmt    ::= "throw"  expression stmt_terminator    (* [Java]   *)
+
+break_stmt    ::= "break"    stmt_terminator
+
+continue_stmt ::= "continue" stmt_terminator
+
+pass_stmt     ::= "pass"     stmt_terminator             (* [Python] *)
+
+assert_stmt   ::= "assert" expression [ "," expression ] stmt_terminator
+
+
+(* ----------------------------------------------------------------
+   Expression statement
+   ---------------------------------------------------------------- *)
+
+expr_stmt ::= expression stmt_terminator
+
+
+(* ================================================================
+   EXPRESSIONS
+   (Pratt parser; rules ordered from lowest to highest precedence)
+   ================================================================ *)
+
+expression ::= assignment_expr
+
+(* ----------------------------------------------------------------
+   Assignment  (right-associative, lowest precedence)
+   ---------------------------------------------------------------- *)
+
+assignment_expr ::= ternary_expr [ assignment_op assignment_expr ]
+
+assignment_op ::= "="
+                | "+=" | "-=" | "*=" | "/=" | "//=" | "%=" | "**="
+                | "&=" | "|=" | "^=" | "<<=" | ">>="
+
+
+(* ----------------------------------------------------------------
+   Ternary / conditional expressions
+   ---------------------------------------------------------------- *)
+
+ternary_expr ::= or_expr
+               | python_ternary
+               | java_ternary
+
+(* Python: value_if_true if condition else value_if_false *)
+python_ternary ::= or_expr "if" or_expr "else" ternary_expr
+
+(* Java: condition ? then : else *)
+java_ternary ::= or_expr "?" assignment_expr ":" ternary_expr
+
+
+(* ----------------------------------------------------------------
+   Logical OR
+   ---------------------------------------------------------------- *)
+
+or_expr ::= and_expr { ( "or" | "||" | "??" ) and_expr }
+(* Note: "??" is the null-coalescing operator, treated at Or precedence. *)
+
+
+(* ----------------------------------------------------------------
+   Logical AND
+   ---------------------------------------------------------------- *)
+
+and_expr ::= not_expr { ( "and" | "&&" ) not_expr }
+
+
+(* ----------------------------------------------------------------
+   Logical NOT  [Python: "not";  Java: "!"]
+   ---------------------------------------------------------------- *)
+
+not_expr ::= comparison_expr
+           | "not" not_expr      (* [Python] *)
+           | "!"   unary_expr    (* [Java]   *)
+
+
+(* ----------------------------------------------------------------
+   Comparisons and membership tests
+   ---------------------------------------------------------------- *)
+
+comparison_expr ::= bitor_expr { comparison_op bitor_expr }
+
+comparison_op ::= "==" | "!="
+                | "<"  | ">"  | "<=" | ">="
+                | "in"                          (* [Python] *)
+                | "not" "in"                    (* [Python] *)
+                | "is"                          (* [Python] *)
+                | "is" "not"                    (* [Python] *)
+                | "instanceof"                  (* [Java]   *)
+
+
+(* ----------------------------------------------------------------
+   Bitwise OR / XOR / AND
+   ---------------------------------------------------------------- *)
+
+bitor_expr  ::= bitxor_expr { "|" bitxor_expr }
+
+bitxor_expr ::= bitand_expr { "^" bitand_expr }
+
+bitand_expr ::= shift_expr  { "&" shift_expr  }
+
+
+(* ----------------------------------------------------------------
+   Shift operators
+   ---------------------------------------------------------------- *)
+
+shift_expr ::= add_expr { ( "<<" | ">>" | ">>>" ) add_expr }
+(* Note: ">>>" is the Java unsigned right-shift operator. *)
+
+
+(* ----------------------------------------------------------------
+   Additive / subtractive
+   ---------------------------------------------------------------- *)
+
+add_expr ::= mul_expr { ( "+" | "-" ) mul_expr }
+
+
+(* ----------------------------------------------------------------
+   Multiplicative
+   ---------------------------------------------------------------- *)
+
+mul_expr ::= unary_expr { ( "*" | "/" | "//" | "%" | "**" ) unary_expr }
+(* Note: "//" is Python floor-division; "**" is exponentiation. *)
+
+
+(* ----------------------------------------------------------------
+   Unary prefix operators
+   ---------------------------------------------------------------- *)
+
+unary_expr ::= postfix_expr
+             | "-"      unary_expr   (* arithmetic negation     *)
+             | "+"      unary_expr   (* arithmetic identity     *)
+             | "~"      unary_expr   (* bitwise NOT             *)
+             | "not"    not_expr     (* Python logical NOT      *)
+             | "!"      unary_expr   (* Java logical NOT        *)
+             | "await"  unary_expr   (* [Python async/await]    *)
+             | "new"    new_expr     (* [Java object creation]  *)
+             | lambda_expr           (* [Python lambda]         *)
+
+
+(* ----------------------------------------------------------------
+   Postfix operators  (call, subscript, attribute access)
+   ---------------------------------------------------------------- *)
+
+postfix_expr ::= primary_expr { postfix_op }
+
+postfix_op ::= call_suffix
+             | index_suffix
+             | attr_suffix
+             | null_safe_attr_suffix
+
+(* Function / method call *)
+call_suffix ::= "(" [ argument_list ] ")"
+
+argument_list ::= argument { "," argument }
+
+argument ::= [ IDENTIFIER "=" ] expression   (* keyword arg if name= present *)
+
+(* Subscript / index access *)
+index_suffix ::= "[" expression "]"
+
+(* Attribute access *)
+attr_suffix ::= "." IDENTIFIER
+
+(* Null-safe attribute access  [Java/Kotlin-style ?.] *)
+null_safe_attr_suffix ::= "?." IDENTIFIER
+
+
+(* ----------------------------------------------------------------
+   new expression  [Java]
+   ---------------------------------------------------------------- *)
+
+new_expr ::= "new" type_expr [ "(" [ argument_list ] ")" ]
+
+
+(* ----------------------------------------------------------------
+   Lambda expression  [Python]
+   ---------------------------------------------------------------- *)
+
+lambda_expr ::= "lambda" [ lambda_param_list ] ":" ternary_expr
+
+lambda_param_list ::= IDENTIFIER { "," IDENTIFIER }
+
+
+(* ----------------------------------------------------------------
+   Primary expressions
+   ---------------------------------------------------------------- *)
+
+primary_expr ::= literal
+               | identifier_expr
+               | paren_expr
+               | list_literal
+               | dict_literal
+               | set_literal
+               | list_comprehension
+
+(* Literals *)
+literal ::= integer_literal
+          | float_literal
+          | string_literal
+          | fstring_literal
+          | triple_string_literal
+          | bool_literal
+          | null_literal
+
+integer_literal     ::= INT_LITERAL      (* decimal, hex 0x…, octal 0o…, binary 0b…; _ separator allowed *)
+
+float_literal       ::= FLOAT_LITERAL
+
+string_literal      ::= STRING_LITERAL   (* "…" or '…'; prefix r, b, R, B allowed *)
+
+fstring_literal     ::= FSTRING_LITERAL  (* f"…{expr}…" or f'…{expr}…'; prefix f or F *)
+
+triple_string_literal ::= TRIPLE_STRING_LITERAL  (* """…""" or '''…'''; prefix f/r/b allowed *)
+
+bool_literal ::= "true" | "false"    (* Java "true"/"false" *)
+               | "True" | "False"    (* Python "True"/"False" *)
+
+null_literal ::= "None"   (* [Python] *)
+               | "null"   (* [Java]   *)
+
+(* Identifier-like atoms *)
+identifier_expr ::= IDENTIFIER
+                  | "this"    (* [Java] current object reference *)
+                  | "super"   (* [Java/Python] parent class reference *)
+                  | "val"     (* contextual: used as identifier when not followed by IDENTIFIER/: *)
+                  | "var"     (* contextual: used as identifier when not followed by IDENTIFIER/: *)
+                  | "const"   (* contextual: used as identifier when not followed by IDENTIFIER/: *)
+
+(* Parenthesised expression or empty tuple "()" *)
+paren_expr ::= "(" expression ")"
+             | "(" ")"               (* empty tuple / unit value *)
+
+(* List literal *)
+list_literal ::= "[" [ expr_list ] "]"
+
+expr_list ::= expression { "," expression }
+
+(* Dict literal — {key: value, ...} *)
+dict_literal ::= "{" "}"
+               | "{" dict_pair { "," dict_pair } [ "," ] "}"
+
+dict_pair ::= expression ":" expression
+
+(* Set literal — {a, b, ...}  (non-empty; empty {} is an empty dict) *)
+set_literal ::= "{" expression { "," expression } [ "," ] "}"
+
+(* List comprehension — [expr for target in iter [if cond] ...] *)
+list_comprehension ::= "[" expression comp_clause { comp_clause } "]"
+
+comp_clause ::= "for" expression "in" expression { "if" expression }
+
+
+(* ================================================================
+   TYPE EXPRESSIONS
+   ================================================================ *)
+
+type_expr ::= primary_type_expr { "[]" }    (* array suffix: int[] *)
+              [ "|" primary_type_expr { "[]" }
+                { "|" primary_type_expr { "[]" } } ]
+              (* Union: int | str | None *)
+
+primary_type_expr ::= named_type
+                    | qualified_type
+                    | generic_type
+                    | optional_type
+                    | tuple_type
+                    | "void"             (* [Java] return-type keyword *)
+
+(* Simple name: int, String, MyClass *)
+named_type ::= IDENTIFIER
+
+(* Qualified name: java.util.List, com.example.Foo *)
+qualified_type ::= IDENTIFIER { "." IDENTIFIER }
+
+(* Generic type: List<T>, Map<K, V>, Optional<int> *)
+generic_type ::= ( named_type | qualified_type ) "<" generic_arg_list ">"
+
+generic_arg_list ::= type_expr { "," type_expr }
+
+(* Optional shorthand: ?Type (equivalent to Optional<Type>) *)
+optional_type ::= "?" primary_type_expr
+
+(* Tuple type: (int, str, bool) *)
+tuple_type ::= "(" type_expr { "," type_expr } ")"
+
+
+(* ================================================================
+   LEXICAL TERMINALS
+   ================================================================ *)
+
+(*
+ * These are the token classes produced by the UniLang lexer.
+ * Whitespace and comments are consumed as trivia (not emitted as tokens)
+ * except where they influence indentation or serve as statement terminators.
+ *)
+
+IDENTIFIER ::= ( LETTER | "_" ) { LETTER | DIGIT | "_" }
+(* Must not equal any reserved keyword. *)
+
+INT_LITERAL ::= decimal_int | hex_int | octal_int | binary_int
+
+decimal_int ::= NONZERO_DIGIT { DIGIT | "_" }
+              | "0"
+
+hex_int     ::= ( "0x" | "0X" ) HEX_DIGIT { HEX_DIGIT | "_" }
+
+octal_int   ::= ( "0o" | "0O" ) OCTAL_DIGIT { OCTAL_DIGIT | "_" }
+
+binary_int  ::= ( "0b" | "0B" ) ( "0" | "1" ) { "0" | "1" | "_" }
+
+FLOAT_LITERAL ::= DIGIT { DIGIT } "." { DIGIT } [ float_exp ]
+                | "." DIGIT { DIGIT } [ float_exp ]
+                | DIGIT { DIGIT } float_exp
+
+float_exp ::= ( "e" | "E" ) [ "+" | "-" ] DIGIT { DIGIT }
+
+STRING_LITERAL ::= ( "\"" { string_char } "\""
+                   | "'"  { string_char } "'"  )
+(* Optionally prefixed with r, b, R, or B. *)
+
+TRIPLE_STRING_LITERAL ::= ( "\"\"\"" { any_char } "\"\"\""
+                           | "'''"   { any_char } "'''"    )
+(* Optionally prefixed with f, r, b, F, R, or B. *)
+
+FSTRING_LITERAL ::= ( "f\"" { fstring_part } "\""
+                    | "f'"  { fstring_part } "'"
+                    | "F\"" { fstring_part } "\""
+                    | "F'"  { fstring_part } "'"  )
+
+fstring_part ::= string_char
+               | "{{" | "}}"          (* escaped braces *)
+               | "{" expression "}"   (* interpolation *)
+
+(* Indentation synthetic tokens — emitted by the indent-tracking lexer. *)
+INDENT  ::= (* lexer emits when indentation level increases *)
+DEDENT  ::= (* lexer emits when indentation level decreases *)
+NEWLINE ::= (* lexer emits a significant newline for ASI     *)
+EOF     ::= (* end of input *)
+
+(* Character classes *)
+LETTER       ::= "A"..."Z" | "a"..."z"
+DIGIT        ::= "0"..."9"
+NONZERO_DIGIT ::= "1"..."9"
+HEX_DIGIT    ::= DIGIT | "A"..."F" | "a"..."f"
+OCTAL_DIGIT  ::= "0"..."7"
+string_char  ::= (* any character except the enclosing quote and raw newline,
+                    or a recognised escape sequence such as \n, \t, \\, \", \' *)
+any_char     ::= (* any character; inside triple-quoted strings the only
+                    restriction is the closing triple-quote sequence *)
+
+
+(* ================================================================
+   RESERVED KEYWORDS
+   (All keywords are case-sensitive.)
+
+   Shared (Python and Java):
+     class  if  else  for  while  return  import  try  finally
+     continue  break  assert
+
+   Python-origin:
+     def  elif  except  raise  pass  yield  async  await
+     with  as  from  in  is  not  and  or  lambda
+     nonlocal  global  del  match  case
+     True  False  None
+
+   Java-origin:
+     public  private  protected  static  final  abstract
+     interface  enum  extends  implements  new  this  super
+     void  throws  throw  catch  synchronized  volatile
+     transient  native  instanceof  switch  default  do
+     true  false  null
+
+   UniLang-specific:
+     var  val  const  bridge  vm  interop
+   ================================================================ *)

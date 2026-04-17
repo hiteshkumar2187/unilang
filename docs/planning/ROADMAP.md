@@ -1,17 +1,17 @@
 # UniLang — Development Roadmap
 
-**Version:** 1.0.0-draft  
-**Last Updated:** 2026-04-16
+**Version:** 1.3.0  
+**Last Updated:** 2026-04-17
 
 ---
 
 ## Phase Overview
 
 ```
-Phase 0: Foundation        ████████████████░░░░  [Mostly Complete]
+Phase 0: Foundation        ██████████████████░░  [Mostly Complete]
 Phase 1: Core Compiler     ████████████████████  [Complete ✓]
-Phase 2: Runtime & VM      ████████████████░░░░  [Mostly Complete]
-Phase 3: Toolchain         ████████░░░░░░░░░░░░  [In Progress]
+Phase 2: Runtime & VM      ██████████████████░░  [Mostly Complete]
+Phase 3: Toolchain         ██████████░░░░░░░░░░  [In Progress]
 Phase 4: IDE & Ecosystem   ████████████░░░░░░░░  [In Progress]
 Phase 5: Production Ready  ░░░░░░░░░░░░░░░░░░░░
 ```
@@ -33,7 +33,7 @@ Phase 5: Production Ready  ░░░░░░░░░░░░░░░░░�
 | Apache License 2.0 setup | ✅ Done | Core Team | LICENSE, NOTICE, file headers |
 | Build system setup (Cargo) | ✅ Done | Core Team | 8-crate Rust workspace |
 | Driver development guide | ✅ Done | Core Team | `docs/DRIVERS.md` |
-| Formal grammar (EBNF) | 🔲 TODO | | Full grammar file in `docs/specifications/` |
+| Formal grammar (EBNF) | ✅ Done | Core Team | `docs/specifications/GRAMMAR.ebnf` — 136 rules, full Python+Java coverage |
 | CI/CD pipeline | ✅ Done | Core Team | GitHub Actions — build + test on push |
 | Community infrastructure | 🔲 TODO | | Issue templates, GitHub Discussions |
 | Apache incubation proposal draft | 🔲 TODO | | |
@@ -82,8 +82,8 @@ Phase 5: Production Ready  ░░░░░░░░░░░░░░░░░�
 | Type inference engine | ✅ Done | Gradual typing: Int, Float, String, Bool, Array, Dynamic |
 | Prelude / standard function resolution | ✅ Done | 35+ stdlib + all driver function names |
 | Import resolution | ✅ Done | Marks imports as dynamic for interop |
-| Overload resolution | 🔲 TODO | |
-| Generic type checking | 🔲 TODO | |
+| Overload resolution | ✅ Done | Core Team | Multiple same-name functions; best-match scoring; gradual fallback to Dynamic |
+| Generic type checking | ✅ Done | Core Team | `List<T>`, `Map<K,V>`, `Option<T>`; element-type checking for append; gradual |
 | Semantic error reporting | ✅ Done | Span-based diagnostics with labels |
 | Semantic analyzer tests | 🔲 TODO | Formal coverage report |
 
@@ -156,11 +156,11 @@ Phase 5: Production Ready  ░░░░░░░░░░░░░░░░░�
 
 | Task | Status | Notes |
 |------|--------|-------|
-| JNI bridge implementation | 🔲 TODO | v2.0 |
-| CPython C API bridge | 🔲 TODO | v2.0 |
-| Type marshaling (all types) | 🔲 TODO | v2.0 |
+| JNI bridge implementation | 🔲 Scaffolded | v2.0 — `crates/unilang-bridge/src/jvm.rs` (stubs ready) |
+| CPython C API bridge | 🔲 Scaffolded | v2.0 — `crates/unilang-bridge/src/cpython.rs` (stubs ready) |
+| Type marshaling (all types) | 🔲 Scaffolded | v2.0 — `crates/unilang-bridge/src/types.rs` (BridgeValue enum + stubs) |
 | Zero-copy array bridge | 🔲 TODO | v2.0 (NumPy ↔ Java arrays) |
-| Cross-VM exception handling | 🔲 TODO | v2.0 |
+| Cross-VM exception handling | 🔲 Scaffolded | v2.0 — `BridgeError::CrossVmException` variant defined |
 | Bridge performance benchmarks | 🔲 TODO | Target: <1μs per call |
 | Java thread pool integration | 🔲 TODO | v2.0 |
 | Python `import` resolution | 🔲 TODO | v2.0 (PyPI packages) |
@@ -183,7 +183,7 @@ Phase 5: Production Ready  ░░░░░░░░░░░░░░░░░�
 | `unilang test` command | 🔲 TODO | Pytest-style test runner |
 | `unilang fmt` command | 🔲 TODO | Source formatter |
 | `unilang lint` command | 🔲 TODO | Static analysis rules |
-| `unilang init` command | 🔲 TODO | Project scaffolding (`unilang.toml`) |
+| `unilang new` command | ✅ Done | Core Team | Interactive TUI wizard + flags; generates `unilang.toml`, `src/main.uniL`, `.gitignore`, `README.md` |
 | `unilang.toml` parser | 🔲 TODO | Project config, deps, features |
 | `unilang.lock` generator | 🔲 TODO | Reproducible builds |
 | Artifact packaging | 🔲 TODO | ZIP-based `.uniLpkg` archive |

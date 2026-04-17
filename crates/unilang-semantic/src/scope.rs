@@ -47,6 +47,8 @@ pub enum ScopeKind {
 #[derive(Debug)]
 pub struct Scope {
     symbols: HashMap<String, Symbol>,
+    /// Overload sets: functions that share a name but differ in parameter types.
+    overloads: HashMap<String, Vec<Symbol>>,
     pub parent: Option<usize>,
     pub kind: ScopeKind,
 }
@@ -55,6 +57,7 @@ impl Scope {
     fn new(kind: ScopeKind, parent: Option<usize>) -> Self {
         Self {
             symbols: HashMap::new(),
+            overloads: HashMap::new(),
             parent,
             kind,
         }
@@ -93,9 +96,46 @@ impl ScopeStack {
     }
 
     /// Define a symbol in the current scope.
-    /// Returns `Err(existing_span)` if the name is already defined in the current scope.
+    ///
+    /// For functions, duplicate names are stored as overloads rather than
+    /// triggering an error — the caller (`Analyzer::define_symbol`) handles
+    /// the error path for non-function duplicates.
+    ///
+    /// Returns `Err(existing_span)` if the name is already defined as a
+    /// non-function (or non-overloadable) symbol in the current scope.
     pub fn define(&mut self, name: &str, symbol: Symbol) -> Result<(), Span> {
         let scope = &mut self.scopes[self.current];
+
+        // Functions with matching names go into the overload set.
+        if matches!(symbol.kind, SymbolKind::Function) {
+            if let Some(existing) = scope.symbols.get(name) {
+                // The primary slot already holds a function — move it into the
+                // overload set and keep the new one as the primary.
+                if matches!(existing.kind, SymbolKind::Function) {
+                    let old = scope.symbols.remove(name).unwrap();
+                    scope
+                        .overloads
+                        .entry(name.to_string())
+                        .or_default()
+                        .push(old);
+                    scope
+                        .overloads
+                        .entry(name.to_string())
+                        .or_default()
+                        .push(symbol.clone());
+                    scope.symbols.insert(name.to_string(), symbol);
+                    return Ok(());
+                }
+                // Non-function already occupies that name — report duplicate.
+                return Err(existing.span);
+            }
+            // New overload name: just store in the primary slot; the overload vec
+            // will be populated if a second overload arrives.
+            scope.symbols.insert(name.to_string(), symbol);
+            return Ok(());
+        }
+
+        // Non-function: check for duplicate normally.
         if let Some(existing) = scope.symbols.get(name) {
             return Err(existing.span);
         }
@@ -115,6 +155,33 @@ impl ScopeStack {
                 None => return None,
             }
         }
+    }
+
+    /// Collect all overloads for a function name by walking up the parent chain.
+    ///
+    /// Returns an empty `Vec` if no overloads exist (the single-symbol case is
+    /// handled by `resolve` — callers should check that first).
+    pub fn resolve_overloads(&self, name: &str) -> Vec<Symbol> {
+        let mut result = Vec::new();
+        let mut idx = self.current;
+        loop {
+            let scope = &self.scopes[idx];
+            // Prefer the explicit overload set if present.
+            if let Some(overload_set) = scope.overloads.get(name) {
+                result.extend(overload_set.iter().cloned());
+                break;
+            }
+            // Single-symbol case: still a candidate.
+            if let Some(sym) = scope.symbols.get(name) {
+                result.push(sym.clone());
+                break;
+            }
+            match scope.parent {
+                Some(parent) => idx = parent,
+                None => break,
+            }
+        }
+        result
     }
 
     /// Check if we are inside a scope of the given kind (walking up).

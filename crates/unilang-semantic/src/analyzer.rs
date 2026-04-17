@@ -799,10 +799,7 @@ impl Analyzer {
             Expr::Index(obj, index) => {
                 let obj_ty = self.visit_expr(obj);
                 self.visit_expr(index);
-                match obj_ty {
-                    Type::Array(inner) => *inner,
-                    _ => Type::Dynamic,
-                }
+                generic_index_type(&obj_ty)
             }
 
             Expr::BinaryOp(left, op, right) => {
@@ -821,8 +818,36 @@ impl Analyzer {
             Expr::UnaryOp(_op, operand) => self.visit_expr(operand),
 
             Expr::Call(callee, args) => {
+                // Collect all overload candidates when the callee is a simple name.
+                let overloads: Vec<Type> = if let Expr::Ident(name) = &callee.node {
+                    let candidates = self.scopes.resolve_overloads(name);
+                    candidates.into_iter().map(|s| s.ty).collect()
+                } else {
+                    vec![]
+                };
+
                 let callee_ty = self.visit_expr(callee);
                 let arg_types: Vec<Type> = args.iter().map(|a| self.visit_expr(&a.value)).collect();
+
+                // Check for well-known generic-aware builtins before general resolution.
+                if let Expr::Ident(name) = &callee.node {
+                    if let Some(ty) = self.check_generic_builtin(name, &arg_types, expr.span) {
+                        return ty;
+                    }
+                }
+
+                // If we have multiple overloads, run overload resolution.
+                if overloads.len() > 1 {
+                    return resolve_overload(
+                        &overloads,
+                        &arg_types,
+                        expr.span,
+                        self.source_id,
+                        &mut self.diagnostics,
+                    );
+                }
+
+                // Single candidate or non-function callee: original path.
                 match &callee_ty {
                     Type::Function(params, ret) => {
                         checker::check_call_arity(
@@ -1005,4 +1030,179 @@ fn is_mutable(modifiers: &[Modifier], _syntax: &SyntaxOrigin) -> bool {
     // In Python syntax, variables are mutable by default.
     // In UniLang, `val` maps to the Final modifier.
     !modifiers.iter().any(|m| matches!(m, Modifier::Final))
+}
+
+// ── Overload resolution ────────────────────────────────────────────────────
+
+/// Score how well `arg_types` matches a single `Function(params, _)` type.
+///
+/// Scoring per argument (higher is better):
+///   2 — exact type match
+///   1 — compatible (assignable) match
+///   0 — at least one side is Dynamic/Unknown (gradual — allowed but lower priority)
+///
+/// Returns `None` if the arity doesn't match or any argument is definitely
+/// incompatible with the corresponding parameter.
+fn overload_score(params: &[Type], arg_types: &[Type]) -> Option<i32> {
+    if params.len() != arg_types.len() {
+        return None;
+    }
+    let mut total = 0i32;
+    for (param, arg) in params.iter().zip(arg_types.iter()) {
+        // Dynamic/Unknown on either side is always compatible but not "exact".
+        let param_dyn = matches!(param, Type::Dynamic | Type::Unknown | Type::Error);
+        let arg_dyn = matches!(arg, Type::Dynamic | Type::Unknown | Type::Error);
+        if param_dyn || arg_dyn {
+            total += 0; // gradual — accepted, no score bonus
+        } else if param == arg {
+            total += 2; // exact match
+        } else if param.is_assignable_from(arg) {
+            total += 1; // compatible (widening / coercion)
+        } else {
+            return None; // incompatible — this overload doesn't match
+        }
+    }
+    Some(total)
+}
+
+/// Pick the best overload from `candidates` for `arg_types`.
+///
+/// Returns the return type of the best matching overload, or `Dynamic` when the
+/// result is ambiguous or no candidates match at all (gradual typing — never hard error).
+fn resolve_overload(
+    candidates: &[Type],
+    arg_types: &[Type],
+    _span: Span,
+    _source_id: SourceId,
+    _diagnostics: &mut DiagnosticBag,
+) -> Type {
+    let mut best_score: Option<i32> = None;
+    let mut best_ret: Option<Type> = None;
+    let mut ambiguous = false;
+
+    for candidate in candidates {
+        if let Type::Function(params, ret) = candidate {
+            if let Some(score) = overload_score(params, arg_types) {
+                match best_score {
+                    None => {
+                        best_score = Some(score);
+                        best_ret = Some(*ret.clone());
+                        ambiguous = false;
+                    }
+                    Some(prev) if score > prev => {
+                        best_score = Some(score);
+                        best_ret = Some(*ret.clone());
+                        ambiguous = false;
+                    }
+                    Some(prev) if score == prev => {
+                        ambiguous = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if ambiguous || best_ret.is_none() {
+        // Ambiguous or no match: fall back to Dynamic (gradual typing).
+        Type::Dynamic
+    } else {
+        best_ret.unwrap_or(Type::Dynamic)
+    }
+}
+
+// ── Generic type helpers ───────────────────────────────────────────────────
+
+/// Given the type of an indexed object, return the element/value type.
+///
+/// Handles:
+///  - `Array(T)`          → `T`
+///  - `Generic("List", [T])`  → `T`
+///  - `Generic("Map", [K, V])` → `V`
+///  - `Generic("Option"/"Optional", [T])` → `T`
+///  - anything else       → `Dynamic`
+fn generic_index_type(obj_ty: &Type) -> Type {
+    match obj_ty {
+        Type::Array(inner) => *inner.clone(),
+        Type::Generic(name, args) => match name.as_str() {
+            "List" | "ArrayList" | "LinkedList" | "Set" | "HashSet" | "TreeSet" => {
+                args.first().cloned().unwrap_or(Type::Dynamic)
+            }
+            "Map" | "HashMap" | "TreeMap" | "LinkedHashMap" => {
+                // subscript returns the value type (second type param)
+                args.get(1).cloned().unwrap_or(Type::Dynamic)
+            }
+            "Option" | "Optional" => args.first().cloned().unwrap_or(Type::Dynamic),
+            _ => Type::Dynamic,
+        },
+        _ => Type::Dynamic,
+    }
+}
+
+/// Extract the element type of a list-like generic type, if known.
+fn list_element_type(ty: &Type) -> Option<Type> {
+    match ty {
+        Type::Array(inner) => Some(*inner.clone()),
+        Type::Generic(name, args) => match name.as_str() {
+            "List" | "ArrayList" | "LinkedList" | "Set" | "HashSet" | "TreeSet" => {
+                Some(args.first().cloned().unwrap_or(Type::Dynamic))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+impl Analyzer {
+    /// Check well-known generic-aware builtin calls and return an optional
+    /// result type.  Returns `None` when no special handling applies.
+    fn check_generic_builtin(
+        &mut self,
+        name: &str,
+        arg_types: &[Type],
+        span: Span,
+    ) -> Option<Type> {
+        match name {
+            // append(list, value) — check value is compatible with list element type
+            "append" => {
+                if arg_types.len() == 2 {
+                    let list_ty = &arg_types[0];
+                    let val_ty = &arg_types[1];
+                    if let Some(elem_ty) = list_element_type(list_ty) {
+                        // Only warn when both types are fully known and incompatible.
+                        if !matches!(elem_ty, Type::Dynamic | Type::Unknown | Type::Error)
+                            && !matches!(val_ty, Type::Dynamic | Type::Unknown | Type::Error)
+                            && !elem_ty.is_assignable_from(val_ty)
+                        {
+                            self.diagnostics.report(
+                                unilang_common::error::Diagnostic::warning(format!(
+                                    "appending '{}' to list of '{}' may be unsafe",
+                                    val_ty.display_name(),
+                                    elem_ty.display_name()
+                                ))
+                                .with_code("W0401")
+                                .with_label(
+                                    span,
+                                    self.source_id,
+                                    "type mismatch in append",
+                                ),
+                            );
+                        }
+                    }
+                }
+                Some(Type::Void)
+            }
+
+            // len(collection) → Int
+            "len" if arg_types.len() == 1 => Some(Type::Int),
+
+            // keys(map) → Dynamic (we don't have a Set<K> type yet)
+            "keys" if arg_types.len() == 1 => Some(Type::Dynamic),
+
+            // values(map) → Dynamic
+            "values" if arg_types.len() == 1 => Some(Type::Dynamic),
+
+            _ => None,
+        }
+    }
 }

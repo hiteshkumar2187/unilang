@@ -1,0 +1,20 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.
+
+[package]
+name = "unilang-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "JVM/CPython bridge for UniLang — type marshaling and cross-VM interop (v2.0)"
+
+[dependencies]
+unilang-runtime = { path = "../unilang-runtime" }
+
+[features]
+default = []
+# Enable JNI bridge (requires Java + jni crate)
+jvm = []
+# Enable CPython C API bridge (requires Python headers + pyo3 crate)
+cpython = []
