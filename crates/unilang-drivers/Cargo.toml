@@ -18,7 +18,7 @@ mysql     = { version = "25",                                      optional = tr
 postgres  = { version = "0.19",                                    optional = true }
 
 # ── NoSQL / Document Databases ───────────────────────────────────
-mongodb   = { version = "2", features = ["sync"],                  optional = true }
+mongodb   = { version = "3", features = ["sync"],                  optional = true }
 
 # ── Caching ──────────────────────────────────────────────────────
 redis     = { version = "0.27", default-features = false, features = ["tcp_nodelay"], optional = true }
@@ -49,7 +49,7 @@ hex       = { version = "0.4",                                     optional = tr
 lapin     = { version = "2",                                       optional = true }
 tokio     = { version = "1", features = ["rt", "rt-multi-thread"], optional = true }
 # nats 0.24 provides a blocking synchronous client API for NATS messaging
-nats      = { version = "0.24",                                    optional = true }
+nats      = { version = "0.26",                                    optional = true }
 
 # ── Metrics ───────────────────────────────────────────────────────
 prometheus = { version = "0.13", default-features = false,         optional = true }
