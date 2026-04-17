@@ -16,6 +16,7 @@ members = [
     "crates/unilang-runtime",
     "crates/unilang-stdlib",
     "crates/unilang-drivers",
+    "crates/unilang-installer",
 ]
 
 [workspace.package]
@@ -28,3 +29,4 @@ repository = "https://github.com/apache/unilang"
 [workspace.dependencies]
 thiserror = "1"
 clap = { version = "=4.5.23", features = ["derive"] }
+
