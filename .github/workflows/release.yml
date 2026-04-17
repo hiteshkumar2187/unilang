@@ -29,23 +29,6 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   # Build UniLang Lite + Full editions for all platforms
   # ═══════════════════════════════════════════════════════════════════════════
-  build-editions:
-    name: ${{ matrix.edition }} / ${{ matrix.target_suffix }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        edition: [lite, full]
-        include_os: [""]   # placeholder to force include expansion
-        exclude:
-          - edition: ""   # never matches; silences the "include_os" column
-        # Platform rows — combined with each edition above
-    # Re-declare the full matrix here using include so we get the cross-product.
-    # GitHub Actions doesn't support nested loops natively, so we enumerate all
-    # 8 combinations (2 editions × 4 platforms) explicitly.
-    steps: []   # overridden below — see real job definition
-
-  # Workaround: define one job per platform/edition pair using a flat include matrix.
   build-edition-bins:
     name: ${{ matrix.edition }} / ${{ matrix.target_suffix }}
     runs-on: ${{ matrix.os }}
