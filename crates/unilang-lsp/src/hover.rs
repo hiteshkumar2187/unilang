@@ -55,11 +55,9 @@ fn find_declaration_hover(source: &str, word: &str) -> Option<String> {
         let line_no = line_idx + 1; // 1-based for display
 
         // `def <word>` or `def <word>(`
-        if trimmed.starts_with("def ") {
-            let rest = trimmed[4..].trim_start();
-            if rest.starts_with(word)
-                && rest[word.len()..].starts_with(|c: char| c == '(' || c == ':' || c == ' ')
-            {
+        if let Some(after_def) = trimmed.strip_prefix("def ") {
+            let rest = after_def.trim_start();
+            if rest.starts_with(word) && rest[word.len()..].starts_with(['(', ':', ' ']) {
                 return Some(format!(
                     "**{}** — function declared on line {}\n\n```\n{}\n```",
                     word, line_no, trimmed
@@ -68,12 +66,9 @@ fn find_declaration_hover(source: &str, word: &str) -> Option<String> {
         }
 
         // `class <word>` or `class <word>(` or `class <word>:`
-        if trimmed.starts_with("class ") {
-            let rest = trimmed[6..].trim_start();
-            if rest.starts_with(word)
-                && rest[word.len()..]
-                    .starts_with(|c: char| c == '(' || c == ':' || c == ' ' || c == '{')
-            {
+        if let Some(after_class) = trimmed.strip_prefix("class ") {
+            let rest = after_class.trim_start();
+            if rest.starts_with(word) && rest[word.len()..].starts_with(['(', ':', ' ', '{']) {
                 return Some(format!(
                     "**{}** — class declared on line {}\n\n```\n{}\n```",
                     word, line_no, trimmed
@@ -83,8 +78,8 @@ fn find_declaration_hover(source: &str, word: &str) -> Option<String> {
 
         // `val <word> =`, `var <word> =`, `let <word> =`
         for prefix in &["val ", "var ", "let "] {
-            if trimmed.starts_with(prefix) {
-                let rest = trimmed[prefix.len()..].trim_start();
+            if let Some(after_prefix) = trimmed.strip_prefix(prefix) {
+                let rest = after_prefix.trim_start();
                 if rest.starts_with(word) && rest[word.len()..].trim_start().starts_with('=') {
                     return Some(format!(
                         "**{}** — declared on line {}\n\n```\n{}\n```",

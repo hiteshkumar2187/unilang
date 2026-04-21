@@ -567,7 +567,7 @@ fn test_new_class_instantiation() {
         } else if let Stmt::VarDecl(vd) = &s.node {
             vd.initializer
                 .as_ref()
-                .map_or(false, |i| matches!(i.node, Expr::New(_, _)))
+                .is_some_and(|i| matches!(i.node, Expr::New(_, _)))
         } else {
             false
         }
@@ -692,9 +692,9 @@ fn test_missing_colon_no_panic() {
 
 #[test]
 fn test_float_literal() {
-    let m = parse_ok("3.14");
+    let m = parse_ok("1.5");
     match &m.statements[0].node {
-        Stmt::Expr(Expr::FloatLit(f)) => assert!((*f - 3.14).abs() < 1e-10),
+        Stmt::Expr(Expr::FloatLit(f)) => assert!((*f - 1.5_f64).abs() < 1e-10),
         other => panic!("expected FloatLit, got {:?}", other),
     }
 }

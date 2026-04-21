@@ -42,7 +42,7 @@ fn bench_marshal_dict(c: &mut Criterion) {
         ),
         (
             RuntimeValue::String("key2".to_string()),
-            RuntimeValue::Float(3.14),
+            RuntimeValue::Float(1.5),
         ),
         (
             RuntimeValue::String("key3".to_string()),

@@ -88,11 +88,7 @@ fn find_test_functions(source: &str) -> Vec<String> {
     for line in source.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("def ") {
-            let func_name = rest
-                .split(|c: char| c == '(' || c == ':' || c == ' ')
-                .next()
-                .unwrap_or("")
-                .trim();
+            let func_name = rest.split(['(', ':', ' ']).next().unwrap_or("").trim();
             if func_name.starts_with("test_") {
                 names.push(func_name.to_string());
             }

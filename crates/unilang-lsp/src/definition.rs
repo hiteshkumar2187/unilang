@@ -28,11 +28,9 @@ pub fn find_definition(
         let indent = line.len() - line.trim_start().len();
 
         // `def <word>(` or `def <word>:`
-        if trimmed.starts_with("def ") {
-            let rest = trimmed[4..].trim_start();
-            if rest.starts_with(word.as_str())
-                && rest[word.len()..].starts_with(|c: char| c == '(' || c == ':' || c == ' ')
-            {
+        if let Some(after_def) = trimmed.strip_prefix("def ") {
+            let rest = after_def.trim_start();
+            if rest.starts_with(word.as_str()) && rest[word.len()..].starts_with(['(', ':', ' ']) {
                 let col = indent + 4; // "def " is 4 chars
                 return Some(GotoDefinitionResponse::Scalar(make_location(
                     uri, line_idx, col,
@@ -41,11 +39,10 @@ pub fn find_definition(
         }
 
         // `class <word>`
-        if trimmed.starts_with("class ") {
-            let rest = trimmed[6..].trim_start();
+        if let Some(after_class) = trimmed.strip_prefix("class ") {
+            let rest = after_class.trim_start();
             if rest.starts_with(word.as_str())
-                && rest[word.len()..]
-                    .starts_with(|c: char| c == '(' || c == ':' || c == ' ' || c == '{')
+                && rest[word.len()..].starts_with(['(', ':', ' ', '{'])
             {
                 let col = indent + 6; // "class " is 6 chars
                 return Some(GotoDefinitionResponse::Scalar(make_location(
@@ -56,8 +53,8 @@ pub fn find_definition(
 
         // `val <word> =`, `var <word> =`
         for prefix in &["val ", "var "] {
-            if trimmed.starts_with(prefix) {
-                let rest = trimmed[prefix.len()..].trim_start();
+            if let Some(after_prefix) = trimmed.strip_prefix(prefix) {
+                let rest = after_prefix.trim_start();
                 if rest.starts_with(word.as_str())
                     && rest[word.len()..].trim_start().starts_with('=')
                 {
