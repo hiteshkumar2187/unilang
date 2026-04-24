@@ -35,5 +35,5 @@ repository = "https://github.com/apache/unilang"
 
 [workspace.dependencies]
 thiserror = "1"
-clap = { version = "=4.5.23", features = ["derive"] }
+clap = { version = "=4.5.23", features = ["derive", "env"] }
 
